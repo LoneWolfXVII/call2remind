@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import app.call2remind.core.model.SourceType
 import app.call2remind.core.time.DefaultTimes
 import kotlinx.coroutines.flow.Flow
@@ -77,7 +78,31 @@ class DataStoreSettingsRepository @Inject constructor(
                 selfTestDone = prefs[ONB_SELF_TEST] ?: false,
                 dndHintShown = prefs[ONB_DND_HINT] ?: false,
             ),
+            sources = readSources(prefs),
         )
+    }
+
+    private fun readSources(prefs: Preferences): SourceSettings {
+        val defaults = SourceSettings()
+        return SourceSettings(
+            enabled = prefs[SOURCES_ENABLED]
+                ?.mapNotNull { name -> SourceType.entries.firstOrNull { it.name == name } }
+                ?.toSet()
+                ?: defaults.enabled,
+            calendarDaysAhead = prefs[CALENDAR_DAYS]?.takeIf { it > 0 } ?: defaults.calendarDaysAhead,
+            excludedCalendarIds = prefs[CALENDAR_EXCLUDED]?.mapNotNull { it.toLongOrNull() }?.toSet()
+                ?: defaults.excludedCalendarIds,
+            birthdayDayBefore = prefs[BIRTHDAY_DAY_BEFORE] ?: defaults.birthdayDayBefore,
+            samsungPackages = prefs[SAMSUNG_PACKAGES] ?: defaults.samsungPackages,
+        )
+    }
+
+    private fun writeSources(prefs: MutablePreferences, sources: SourceSettings) {
+        prefs[SOURCES_ENABLED] = sources.enabled.mapTo(HashSet()) { it.name }
+        prefs[CALENDAR_DAYS] = sources.calendarDaysAhead
+        prefs[CALENDAR_EXCLUDED] = sources.excludedCalendarIds.mapTo(HashSet()) { it.toString() }
+        prefs[BIRTHDAY_DAY_BEFORE] = sources.birthdayDayBefore
+        prefs[SAMSUNG_PACKAGES] = sources.samsungPackages
     }
 
     private fun write(prefs: MutablePreferences, settings: Settings) {
@@ -97,6 +122,7 @@ class DataStoreSettingsRepository @Inject constructor(
         prefs[ONB_BATTERY] = settings.onboarding.batteryOptimizationDone
         prefs[ONB_SELF_TEST] = settings.onboarding.selfTestDone
         prefs[ONB_DND_HINT] = settings.onboarding.dndHintShown
+        writeSources(prefs, settings.sources)
     }
 
     private fun parseTime(text: String): LocalTime? = try {
@@ -116,6 +142,11 @@ class DataStoreSettingsRepository @Inject constructor(
         val ONB_BATTERY = booleanPreferencesKey("onboarding_battery_done")
         val ONB_SELF_TEST = booleanPreferencesKey("onboarding_self_test_done")
         val ONB_DND_HINT = booleanPreferencesKey("onboarding_dnd_hint_shown")
+        val SOURCES_ENABLED = stringSetPreferencesKey("sources_enabled")
+        val CALENDAR_DAYS = intPreferencesKey("calendar_days_ahead")
+        val CALENDAR_EXCLUDED = stringSetPreferencesKey("calendar_excluded_ids")
+        val BIRTHDAY_DAY_BEFORE = booleanPreferencesKey("birthday_day_before")
+        val SAMSUNG_PACKAGES = stringSetPreferencesKey("samsung_packages")
 
         fun defaultTimeKey(type: SourceType) = stringPreferencesKey("default_time_${type.name}")
         fun ringtoneKey(type: SourceType) = stringPreferencesKey("ringtone_${type.name}")

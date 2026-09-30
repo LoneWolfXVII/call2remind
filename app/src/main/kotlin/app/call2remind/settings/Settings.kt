@@ -15,6 +15,7 @@ import java.time.Duration
  * @property maxRingBacks ring-backs before an occurrence is marked missed.
  * @property defaultRingtoneUri app-wide ringtone; `null` = system default alarm sound.
  * @property sourceRingtones per-source ringtone overrides.
+ * @property sources per-source sync options (enable flags, calendar window, birthdays…).
  */
 data class Settings(
     val defaultTimes: DefaultTimes = DefaultTimes.DEFAULT,
@@ -25,6 +26,7 @@ data class Settings(
     val ttsEnabled: Boolean = true,
     val sourceRingtones: Map<SourceType, String> = emptyMap(),
     val onboarding: OnboardingFlags = OnboardingFlags(),
+    val sources: SourceSettings = SourceSettings(),
 ) {
     /** The snooze policy for the state machine / recovery (values are clamped to be valid). */
     val snoozePolicy: SnoozePolicy
