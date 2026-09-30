@@ -11,6 +11,9 @@ import app.call2remind.core.recurrence.RecurrenceRule
 import app.call2remind.core.ringing.OccurrenceEvent
 import app.call2remind.core.ringing.RecoveryAction
 import app.call2remind.core.ringing.TransitionResult
+import app.call2remind.data.mapper.toEntity
+import app.call2remind.data.repo.ReminderRepository
+import app.call2remind.data.repo.ReminderSnapshot
 import app.call2remind.testing.EngineHarness
 import app.call2remind.testing.FakeAlarmScheduler.Armed
 import app.call2remind.testing.FakeRingContextProvider
@@ -20,6 +23,10 @@ import app.call2remind.testing.minutes
 import app.call2remind.testing.occurrence
 import app.call2remind.testing.reminder
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Test
@@ -40,6 +47,12 @@ class SchedulingEngineTest {
     private val b = reminder("b", Schedule.At(T0.plus(hours(3))))
 
     private fun occOf(reminder: Reminder, at: java.time.Instant): Occurrence = Occurrence.scheduled(reminder, at)
+
+    /** Ring timeout (45 s) + recovery grace (30 s) + deadline slack (1 s). */
+    private val unansweredDeadline: Duration = Duration.ofSeconds(45 + 30).plus(SchedulingEngine.DEADLINE_SLACK)
+
+    /** Answered-call staleness (15 min) + deadline slack. */
+    private val answeredDeadline: Duration = minutes(15).plus(SchedulingEngine.DEADLINE_SLACK)
 
     @After
     fun tearDown() = h.close()
@@ -144,7 +157,8 @@ class SchedulingEngineTest {
 
         assertThat(result.deleted.map { it.id }).containsExactly(occOf(b, T0.plus(hours(3))).id)
         assertThat(h.occurrences.get(ringing.id)?.state).isEqualTo(OccurrenceState.RINGING)
-        assertThat(h.alarms.armed).isEmpty()
+        // Only the ringing row's deadline alarm remains.
+        assertThat(h.alarms.armed.keys).containsExactly(ringing.id)
     }
 
     @Test
@@ -304,7 +318,7 @@ class SchedulingEngineTest {
     }
 
     @Test
-    fun claimNextTakesTheLockAndCancelsTheAlarm() = runBlocking<Unit> {
+    fun claimNextTakesTheLockAndReArmsTheAlarmAtTheRingDeadline() = runBlocking<Unit> {
         val now = reminder("now", Schedule.At(T0))
         engine.upsertReminders(listOf(now))
         val occ = occOf(now, T0)
@@ -313,9 +327,143 @@ class SchedulingEngineTest {
         val step = engine.claimNext()
 
         assertThat(step).isEqualTo(RingStep.Ring(occ.copy(state = OccurrenceState.RINGING, fireAt = clock.now)))
-        assertThat(h.alarms.cancelled).contains(occ.id)
-        assertThat(h.alarms.armed).doesNotContainKey(occ.id)
+        // The fired alarm is not left consumed: it now guards the ring (service death → recovery).
+        assertThat(h.alarms.armed[occ.id]).isEqualTo(Armed(occ.id, clock.now.plus(unansweredDeadline), isSoonest = true))
+        assertThat(h.alarms.cancelled).doesNotContain(occ.id)
         assertThat(h.occurrences.getRingLog(occ.id).map { it.type }).containsExactly(RingLogType.FIRED)
+
+        // Reconcile derives the same deadline.
+        h.alarms.reset()
+        engine.reconcile()
+        assertThat(h.alarms.armed[occ.id]?.at).isEqualTo(clock.now.plus(unansweredDeadline))
+    }
+
+    @Test
+    fun answeringMovesTheDeadlineToTheAnsweredStaleness() = runBlocking<Unit> {
+        engine.upsertReminders(listOf(reminder("now", Schedule.At(T0))))
+        val ringing = (engine.claimNext() as RingStep.Ring).occurrence
+        clock.advance(Duration.ofSeconds(5))
+
+        engine.handle(ringing.id, OccurrenceEvent.Answer)
+
+        assertThat(h.alarms.armed[ringing.id]?.at).isEqualTo(clock.now.plus(answeredDeadline))
+        assertThat(h.alarms.cancelled).doesNotContain(ringing.id)
+    }
+
+    @Test
+    fun orphanedRingIsRecoveredAtItsDeadlineAlarm() = runBlocking<Unit> {
+        // The process dies right after claiming: no service, no ring timer, only the deadline alarm.
+        engine.upsertReminders(listOf(reminder("now", Schedule.At(T0))))
+        val ringing = (engine.claimNext() as RingStep.Ring).occurrence
+        val deadline = requireNotNull(h.alarms.armed[ringing.id]).at
+
+        clock.now = deadline
+        val step = engine.claimNext() // the deadline alarm's receiver
+
+        assertThat(step).isEqualTo(RingStep.Idle)
+        val stored = requireNotNull(h.occurrences.get(ringing.id))
+        assertThat(stored.state).isEqualTo(OccurrenceState.SNOOZED)
+        assertThat(stored.ringBacks).isEqualTo(1)
+        assertThat(h.occurrences.getRingLog(ringing.id).last().reason).isEqualTo(RingLogEvent.REASON_RING_TIMEOUT)
+        assertThat(h.missed.missed.map { it.id }).containsExactly(ringing.id)
+        assertThat(h.alarms.armed[ringing.id]?.at).isEqualTo(deadline.plus(minutes(5)))
+    }
+
+    @Test
+    fun alarmWhileAnotherOccurrenceRingsWithoutAServiceStillRingsAtTheDeadline() = runBlocking<Unit> {
+        val first = reminder("first", Schedule.At(T0))
+        val second = reminder("second", Schedule.At(T0.plus(Duration.ofSeconds(10))))
+        engine.upsertReminders(listOf(first, second))
+        val ringing = (engine.claimNext() as RingStep.Ring).occurrence
+        val queued = occOf(second, T0.plus(Duration.ofSeconds(10)))
+
+        // The second alarm fires while the first still "rings" (its service died): line busy.
+        clock.now = T0.plus(Duration.ofSeconds(11))
+        assertThat(engine.claimNext()).isEqualTo(RingStep.LineBusy)
+        engine.reconcile()
+        assertThat(h.alarms.armed).doesNotContainKey(queued.id)
+        val deadline = requireNotNull(h.alarms.armed[ringing.id]).at
+        assertThat(deadline).isEqualTo(T0.plus(unansweredDeadline))
+
+        // The ringing row's deadline alarm frees the line and rings the queued occurrence.
+        clock.now = deadline
+        val step = engine.claimNext()
+
+        assertThat((step as RingStep.Ring).occurrence.id).isEqualTo(queued.id)
+        assertThat(h.occurrences.get(ringing.id)?.state).isEqualTo(OccurrenceState.SNOOZED)
+    }
+
+    @Test
+    fun answeredAndAbandonedCallFreesTheLineAtItsDeadline() = runBlocking<Unit> {
+        val first = reminder("first", Schedule.At(T0))
+        val second = reminder("second", Schedule.At(T0.plus(minutes(1))))
+        engine.upsertReminders(listOf(first, second))
+        val ringing = (engine.claimNext() as RingStep.Ring).occurrence
+        engine.handle(ringing.id, OccurrenceEvent.Answer)
+        clock.now = T0.plus(minutes(1))
+        assertThat(engine.claimNext()).isEqualTo(RingStep.LineBusy)
+        engine.reconcile()
+
+        val deadline = requireNotNull(h.alarms.armed[ringing.id]).at
+        assertThat(deadline).isEqualTo(T0.plus(answeredDeadline))
+        clock.now = deadline
+        val step = engine.claimNext()
+
+        assertThat(h.occurrences.get(ringing.id)?.state).isEqualTo(OccurrenceState.DONE)
+        assertThat((step as RingStep.Ring).occurrence.id).isEqualTo(occOf(second, T0.plus(minutes(1))).id)
+    }
+
+    @Test
+    fun endingARingArmsOccurrencesQueuedBehindItImmediately() = runBlocking<Unit> {
+        val first = reminder("first", Schedule.At(T0))
+        val second = reminder("second", Schedule.At(T0.plus(Duration.ofSeconds(20))))
+        engine.upsertReminders(listOf(first, second))
+        val ringing = (engine.claimNext() as RingStep.Ring).occurrence
+        clock.now = T0.plus(Duration.ofSeconds(20))
+        assertThat(engine.claimNext()).isEqualTo(RingStep.LineBusy)
+        engine.reconcile()
+        clock.now = T0.plus(Duration.ofSeconds(30))
+
+        engine.handle(ringing.id, OccurrenceEvent.Done)
+
+        val queued = occOf(second, T0.plus(Duration.ofSeconds(20)))
+        assertThat(h.alarms.armed[queued.id]).isEqualTo(Armed(queued.id, clock.now, isSoonest = true))
+        assertThat(h.alarms.armed).doesNotContainKey(ringing.id)
+    }
+
+    @Test
+    fun deferGivesTheLineBackWithoutARingBackAndRingsAgain() = runBlocking<Unit> {
+        engine.upsertReminders(listOf(reminder("now", Schedule.At(T0))))
+        val ringing = (engine.claimNext() as RingStep.Ring).occurrence
+        clock.advance(Duration.ofSeconds(3))
+
+        engine.handle(ringing.id, OccurrenceEvent.Defer)
+
+        val released = requireNotNull(h.occurrences.get(ringing.id))
+        assertThat(released.state).isEqualTo(OccurrenceState.SCHEDULED)
+        assertThat(released.ringBacks).isEqualTo(0)
+        assertThat(h.missed.missed).isEmpty()
+        assertThat(h.missed.ringEnded.map { it.id }).containsExactly(ringing.id)
+        assertThat(h.alarms.armed[ringing.id]?.at).isEqualTo(clock.now)
+
+        h.ringContext.context = FakeRingContextProvider.IDLE.copy(inRealCall = true)
+        assertThat(engine.claimNext()).isInstanceOf(RingStep.Defer::class.java)
+        h.ringContext.context = FakeRingContextProvider.IDLE
+        assertThat((engine.claimNext() as RingStep.Ring).occurrence.id).isEqualTo(ringing.id)
+    }
+
+    @Test
+    fun claimNextMarksTooLateRingsMissedBeforeRingingTheNextOne() = runBlocking<Unit> {
+        val old = reminder("old", Schedule.At(T0.plus(hours(1))))
+        engine.upsertReminders(listOf(old))
+        clock.now = T0.plus(hours(3)).plus(minutes(30))
+        val fresh = reminder("fresh", Schedule.At(clock.now))
+        engine.upsertReminders(listOf(old, fresh))
+
+        val step = engine.claimNext()
+
+        assertThat((step as RingStep.Ring).occurrence.reminderId).isEqualTo(fresh.id)
+        assertThat(h.occurrences.get(occOf(old, T0.plus(hours(1))).id)?.state).isEqualTo(OccurrenceState.MISSED)
     }
 
     @Test
@@ -411,6 +559,50 @@ class SchedulingEngineTest {
         assertThat(h.alarms.cancelled).isEmpty()
     }
 
+    @Test
+    fun corruptReminderRowKeepsItsOccurrences() = runBlocking<Unit> {
+        engine.upsertReminders(listOf(a, b))
+        val occA = occOf(a, T0.plus(hours(1)))
+        // a's row becomes unreadable (e.g. a schedule format from a newer version).
+        h.db.reminderDao().upsertAll(listOf(a.toEntity(null, T0).copy(scheduleJson = "{not json")))
+        h.alarms.reset()
+
+        val result = engine.replan(ReplanReason.MANUAL)
+
+        assertThat(result.deleted).isEmpty()
+        assertThat(h.alarms.cancelled).isEmpty()
+        assertThat(h.occurrences.get(occA.id)?.state).isEqualTo(OccurrenceState.SCHEDULED)
+        assertThat(h.alarms.armed.keys).containsExactly(occA.id, occOf(b, T0.plus(hours(3))).id)
+    }
+
+    @Test
+    fun ringImmediatelyCannotBeCancelledByAConcurrentReplan() = runBlocking<Unit> {
+        val entered = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        // A replan that has read the reminders (before the reactive reminder exists) and then stalls.
+        val stalling = object : ReminderRepository by h.reminders {
+            override suspend fun getAllForPlanning(): ReminderSnapshot {
+                val snapshot = h.reminders.getAllForPlanning()
+                entered.complete(Unit)
+                gate.await()
+                return snapshot
+            }
+        }
+        val engine = SchedulingEngine(stalling, h.occurrences, h.alarms, h.settings, h.ringContext, h.missed, clock)
+        val samsung = reminder("s1", Schedule.At(T0), sourceType = SourceType.SAMSUNG_REMINDER)
+
+        val replan = async(Dispatchers.Default) { engine.replan(ReplanReason.MANUAL) }
+        entered.await()
+        val ring = async(Dispatchers.Default) { engine.ringImmediately(samsung, T0, sourceId = "samsung") }
+        delay(RACE_WINDOW_MS)
+        gate.complete(Unit)
+        replan.await()
+        val occ = ring.await()
+
+        assertThat(h.occurrences.get(occ.id)?.state).isEqualTo(OccurrenceState.SCHEDULED)
+        assertThat(h.alarms.armed[occ.id]?.at).isEqualTo(T0)
+    }
+
     // --- sources ---
 
     @Test
@@ -456,5 +648,9 @@ class SchedulingEngineTest {
 
         assertThat(result.reason).isEqualTo(ReplanReason.DAILY_TOP_UP)
         assertThat(h.occurrences.get(old.id)).isNull()
+    }
+
+    private companion object {
+        const val RACE_WINDOW_MS = 300L
     }
 }

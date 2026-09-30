@@ -62,6 +62,7 @@ class AndroidTtsPlayer @Inject constructor(
 
     private val initLock = Mutex()
     private var engine: TextToSpeech? = null
+    private val focus = AlarmAudioFocus(context, AudioAttributes.CONTENT_TYPE_SPEECH)
 
     private val listener = object : UtteranceProgressListener() {
         override fun onStart(utteranceId: String?) {
@@ -93,16 +94,22 @@ class AndroidTtsPlayer @Inject constructor(
     override suspend fun speak(text: String): Boolean {
         val tts = engine() ?: return false
         val utteranceId = UUID.randomUUID().toString()
-        return coroutineScope {
-            val finished = async(start = CoroutineStart.UNDISPATCHED) {
-                _events.first { it.utteranceId == utteranceId && it.isTerminal() }
+        // Other audio pauses while the reminder is spoken, and resumes after.
+        focus.request()
+        return try {
+            coroutineScope {
+                val finished = async(start = CoroutineStart.UNDISPATCHED) {
+                    _events.first { it.utteranceId == utteranceId && it.isTerminal() }
+                }
+                if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), utteranceId) != TextToSpeech.SUCCESS) {
+                    finished.cancel()
+                    false
+                } else {
+                    finished.await() is TtsEvent.Done
+                }
             }
-            if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), utteranceId) != TextToSpeech.SUCCESS) {
-                finished.cancel()
-                false
-            } else {
-                finished.await() is TtsEvent.Done
-            }
+        } finally {
+            focus.abandon()
         }
     }
 

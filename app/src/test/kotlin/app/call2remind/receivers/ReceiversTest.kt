@@ -2,6 +2,7 @@ package app.call2remind.receivers
 
 import android.app.Application
 import android.content.Intent
+import android.os.UserManager
 import androidx.test.core.app.ApplicationProvider
 import app.call2remind.core.log.RingLogType
 import app.call2remind.core.model.Occurrence
@@ -9,6 +10,7 @@ import app.call2remind.core.model.OccurrenceState
 import app.call2remind.core.model.Schedule
 import app.call2remind.data.db.Call2RemindDb
 import app.call2remind.data.repo.OccurrenceRepository
+import app.call2remind.ringing.RingWakeLock
 import app.call2remind.ringing.RingingService
 import app.call2remind.scheduling.AndroidAlarmScheduler
 import app.call2remind.scheduling.SchedulingEngine
@@ -34,6 +36,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.time.Duration
 import java.time.Instant
 import javax.inject.Inject
 
@@ -59,6 +62,8 @@ class ReceiversTest {
     @Inject lateinit var jobs: FakeBackgroundJobs
 
     @Inject lateinit var db: Call2RemindDb
+
+    @Inject lateinit var wakeLock: RingWakeLock
 
     private val app: Application = ApplicationProvider.getApplicationContext()
 
@@ -163,11 +168,14 @@ class ReceiversTest {
 
     // --- AlarmReceiver ---
 
+    private fun fire(occ: Occurrence) = AlarmReceiver().onReceive(app, AndroidAlarmScheduler.fireIntent(app, occ.id))
+
     @Test
+    @Config(sdk = [34, 35])
     fun alarmClaimsTheDueOccurrenceAndStartsTheRingingService() {
         val occ = scheduled("a", clock.now)
 
-        AlarmReceiver().onReceive(app, AndroidAlarmScheduler.fireIntent(app, occ.id))
+        fire(occ)
 
         awaitUntil { shadowOf(app).peekNextStartedService() != null }
         val started = shadowOf(app).nextStartedService
@@ -175,6 +183,33 @@ class ReceiversTest {
         assertThat(started.getStringExtra(RingingService.EXTRA_OCCURRENCE_ID)).isEqualTo(occ.id)
         assertThat(state(occ.id)?.state).isEqualTo(OccurrenceState.RINGING)
         assertThat(logTypes(occ.id)).containsExactly(RingLogType.FIRED)
+        // The CPU stays awake until the service rings; the ring is guarded by its deadline alarm.
+        assertThat(wakeLock.isHeld).isTrue()
+        awaitUntil(message = "deadline alarm") { alarms.armed[occ.id]?.at == clock.now.plus(Duration.ofSeconds(76)) }
+    }
+
+    @Test
+    fun alarmWhileAnotherOccurrenceRingsWithoutAServiceRingsItAtTheDeadline() {
+        val first = scheduled("a", clock.now)
+        val second = scheduled("b", clock.now.plusSeconds(5))
+        fire(first)
+        awaitUntil { shadowOf(app).peekNextStartedService() != null }
+        shadowOf(app).clearStartedServices()
+        // The ringing service never runs (process killed). The second alarm finds the line busy.
+        clock.advance(Duration.ofSeconds(6))
+        fire(second)
+        Thread.sleep(IGNORE_SETTLE_MS)
+        assertThat(shadowOf(app).peekNextStartedService()).isNull()
+        assertThat(state(second.id)?.state).isEqualTo(OccurrenceState.SCHEDULED)
+
+        // The ringing occurrence's deadline alarm times it out and rings the queued one.
+        clock.now = requireNotNull(alarms.armed[first.id]).at
+        fire(first)
+
+        awaitUntil(message = "queued ring started") { shadowOf(app).peekNextStartedService() != null }
+        assertThat(shadowOf(app).nextStartedService.getStringExtra(RingingService.EXTRA_OCCURRENCE_ID)).isEqualTo(second.id)
+        assertThat(state(first.id)?.state).isEqualTo(OccurrenceState.SNOOZED)
+        assertThat(state(second.id)?.state).isEqualTo(OccurrenceState.RINGING)
     }
 
     @Test
@@ -217,17 +252,24 @@ class ReceiversTest {
 
     @Test
     fun lockedBootAndPackageReplacedAlsoRecover() {
+        val userManager = app.getSystemService(UserManager::class.java)
+        shadowOf(userManager).setUserUnlocked(false)
         val occ = scheduled("a", clock.now.plus(hours(1)))
         clock.advance(hours(4))
 
         BootReceiver().onReceive(app, Intent(Intent.ACTION_LOCKED_BOOT_COMPLETED))
         awaitUntil { state(occ.id)?.state == OccurrenceState.MISSED }
+        Thread.sleep(IGNORE_SETTLE_MS)
+        // WorkManager lives in credential-protected storage: untouched before the first unlock.
+        assertThat(jobs.scheduledCount).isEqualTo(0)
 
+        shadowOf(userManager).setUserUnlocked(true)
         val next = scheduled("b", clock.now.plus(hours(1)))
         clock.advance(hours(1).plus(minutes(1)))
         alarms.reset()
         BootReceiver().onReceive(app, Intent(Intent.ACTION_MY_PACKAGE_REPLACED))
         awaitUntil { alarms.armed[next.id]?.at == clock.now }
+        awaitUntil { jobs.scheduledCount == 1 }
     }
 
     @Test

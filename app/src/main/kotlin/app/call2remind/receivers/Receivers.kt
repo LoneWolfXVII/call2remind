@@ -12,11 +12,14 @@ import app.call2remind.scheduling.RingStep
 import app.call2remind.scheduling.SchedulingEngine
 import app.call2remind.settings.SettingsRepository
 import app.call2remind.ringing.RingLauncher
+import app.call2remind.ringing.RingWakeLock
 import app.call2remind.work.BackgroundJobs
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Duration
 import javax.inject.Inject
@@ -26,6 +29,8 @@ private const val TAG = "Receivers"
 /**
  * Budget for work done after `goAsync()`: the system ANRs a broadcast after ~10 s. All work here
  * is idempotent and re-run by the watchdog, so a timeout only delays, never loses, a ring.
+ * Work that must not be split (claiming a ring and starting it) runs `NonCancellable` and may
+ * overrun the budget rather than orphan a claimed ring.
  */
 internal const val RECEIVER_BUDGET_MS: Long = 9_000L
 
@@ -51,8 +56,13 @@ internal fun BroadcastReceiver.runAsync(scope: CoroutineScope, block: suspend ()
 }
 
 /**
- * An occurrence alarm fired: take the ring lock for the next due occurrence (ring queue) and
- * start ringing — exact alarms allow starting the foreground service from here. Re-arms after.
+ * An occurrence alarm fired (its ring time, or a ringing occurrence's deadline): take the ring
+ * lock for the next due occurrence (ring queue) and start ringing — exact alarms allow starting
+ * the foreground service from here, for a short window, so that happens before re-arming.
+ *
+ * Claim and service start run `NonCancellable`: the receiver budget must never cancel between
+ * the claim's commit and the start (an orphaned RINGING row would block the line until its
+ * deadline). A partial wake lock bridges the broadcast's end and the service's first ring.
  */
 @AndroidEntryPoint
 class AlarmReceiver : BroadcastReceiver() {
@@ -60,16 +70,23 @@ class AlarmReceiver : BroadcastReceiver() {
 
     @Inject lateinit var launcher: RingLauncher
 
+    @Inject lateinit var wakeLock: RingWakeLock
+
     @Inject @ApplicationScope
     lateinit var scope: CoroutineScope
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_FIRE) return
         runAsync(scope) {
-            when (val step = engine.claimNext()) {
-                is RingStep.Ring -> launcher.startRinging(step.occurrence)
-                is RingStep.Defer -> launcher.deferUntilCallEnds(step.due)
-                RingStep.LineBusy, RingStep.Idle -> Unit
+            withContext(NonCancellable) {
+                when (val step = engine.claimNext()) {
+                    is RingStep.Ring -> {
+                        wakeLock.acquire(RingWakeLock.RECEIVER_TIMEOUT_MS)
+                        launcher.startRinging(step.occurrence)
+                    }
+                    is RingStep.Defer -> launcher.deferUntilCallEnds(step.due)
+                    RingStep.LineBusy, RingStep.Idle -> Unit
+                }
             }
             engine.reconcile()
         }

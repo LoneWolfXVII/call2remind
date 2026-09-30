@@ -67,16 +67,41 @@ class RingContextProviderTest {
     }
 
     @Test
-    fun onlyTotalSilenceCountsAsDnd() {
+    fun dndSilencesTheRingOnlyWhenItSilencesAlarms() {
+        // Alarms-only mode lets alarms (our ring) through.
+        notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALARMS)
+        assertThat(provider.current().dndTotalSilence).isFalse()
+        assertThat(RingDecision.decide(provider.current())).isEqualTo(RingMode.FULL_SCREEN)
+
+        // Priority mode: alarms are allowed by default (no policy / policy allowing alarms)…
         notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
         assertThat(provider.current().dndTotalSilence).isFalse()
-        notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALARMS)
+        notifications.notificationPolicy = NotificationManager.Policy(NotificationManager.Policy.PRIORITY_CATEGORY_ALARMS, 0, 0)
+        assertThat(provider.current().dndTotalSilence).isFalse()
+        // …but a priority policy that excludes alarms silences us like total silence.
+        notifications.notificationPolicy = NotificationManager.Policy(NotificationManager.Policy.PRIORITY_CATEGORY_CALLS, 0, 0)
+        assertThat(provider.current().dndTotalSilence).isTrue()
+        assertThat(RingDecision.decide(provider.current())).isEqualTo(RingMode.SILENT_FULL_SCREEN_VIBRATE)
+
+        notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
         assertThat(provider.current().dndTotalSilence).isFalse()
 
         notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
         val ringContext = provider.current()
         assertThat(ringContext.dndTotalSilence).isTrue()
         assertThat(RingDecision.decide(ringContext)).isEqualTo(RingMode.SILENT_FULL_SCREEN_VIBRATE)
+    }
+
+    @Test
+    fun alarmsSilencedClassification() {
+        val alarms = NotificationManager.Policy.PRIORITY_CATEGORY_ALARMS
+        assertThat(AndroidRingContextProvider.alarmsSilenced(NotificationManager.INTERRUPTION_FILTER_NONE, alarms)).isTrue()
+        assertThat(AndroidRingContextProvider.alarmsSilenced(NotificationManager.INTERRUPTION_FILTER_ALARMS, 0)).isFalse()
+        assertThat(AndroidRingContextProvider.alarmsSilenced(NotificationManager.INTERRUPTION_FILTER_PRIORITY, null)).isFalse()
+        assertThat(AndroidRingContextProvider.alarmsSilenced(NotificationManager.INTERRUPTION_FILTER_PRIORITY, alarms)).isFalse()
+        assertThat(AndroidRingContextProvider.alarmsSilenced(NotificationManager.INTERRUPTION_FILTER_PRIORITY, 0)).isTrue()
+        assertThat(AndroidRingContextProvider.alarmsSilenced(NotificationManager.INTERRUPTION_FILTER_ALL, 0)).isFalse()
+        assertThat(AndroidRingContextProvider.alarmsSilenced(NotificationManager.INTERRUPTION_FILTER_UNKNOWN, 0)).isFalse()
     }
 
     @Test

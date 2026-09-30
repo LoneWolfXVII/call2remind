@@ -177,6 +177,10 @@ class FakeCallStateMonitor : CallStateMonitor {
     override suspend fun awaitCallEnded() {
         inCall.first { !it }
     }
+
+    override suspend fun awaitCallStarted() {
+        inCall.first { it }
+    }
 }
 
 class FakeBackgroundJobs : BackgroundJobs {

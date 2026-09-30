@@ -1,5 +1,6 @@
 package app.call2remind.ringing
 
+import android.content.ContentResolver
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -12,6 +13,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
 import android.util.Log
+import app.call2remind.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.IOException
 import javax.inject.Inject
@@ -21,7 +23,9 @@ import javax.inject.Singleton
 interface RingAlerts {
     /**
      * Starts a looping ringtone (if [sound]) and a repeating vibration (if [vibrate]).
-     * [ringtoneUri] `null` or unplayable → the system default alarm / ringtone sound.
+     * [ringtoneUri] `null` or unplayable → the system default alarm / ringtone sound, and as a
+     * last resort the bundled ring ([bundledRingUri]). While the ringtone plays, transient audio
+     * focus is held so other audio pauses.
      */
     fun start(ringtoneUri: String?, sound: Boolean, vibrate: Boolean)
 
@@ -36,10 +40,14 @@ class AndroidRingAlerts @Inject constructor(
 ) : RingAlerts {
     private var player: MediaPlayer? = null
     private var vibrator: Vibrator? = null
+    private val focus = AlarmAudioFocus(context, AudioAttributes.CONTENT_TYPE_SONIFICATION)
 
     override fun start(ringtoneUri: String?, sound: Boolean, vibrate: Boolean) {
         stop()
-        if (sound) playFrom(candidates(ringtoneUri), 0)
+        if (sound) {
+            focus.request()
+            playFrom(candidates(ringtoneUri), 0)
+        }
         if (vibrate) startVibration()
     }
 
@@ -55,6 +63,7 @@ class AndroidRingAlerts @Inject constructor(
         player = null
         vibrator?.cancel()
         vibrator = null
+        focus.abandon()
     }
 
     private fun candidates(ringtoneUri: String?): List<Uri> = listOfNotNull(
@@ -62,6 +71,7 @@ class AndroidRingAlerts @Inject constructor(
         RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM),
         Settings.System.DEFAULT_ALARM_ALERT_URI,
         Settings.System.DEFAULT_RINGTONE_URI,
+        bundledRingUri(context),
     ).distinct()
 
     /** Tries [uris] from [index] on, moving to the next one on any failure. */
@@ -118,10 +128,15 @@ class AndroidRingAlerts @Inject constructor(
         vibrator = v
     }
 
-    private companion object {
-        const val TAG = "RingAlerts"
-        val VIBRATION_PATTERN = longArrayOf(0, 1000, 1000)
-        val ALARM_ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
+    companion object {
+        private const val TAG = "RingAlerts"
+
+        /** The ring bundled with the app (`res/raw/c2r_fallback_ring`): plays when no system sound does. */
+        fun bundledRingUri(context: Context): Uri =
+            Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${context.packageName}/${R.raw.c2r_fallback_ring}")
+
+        private val VIBRATION_PATTERN = longArrayOf(0, 1000, 1000)
+        private val ALARM_ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ALARM)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()

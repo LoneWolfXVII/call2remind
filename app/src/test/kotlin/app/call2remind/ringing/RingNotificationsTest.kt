@@ -4,7 +4,9 @@ import android.Manifest
 import android.app.Application
 import android.app.Notification
 import android.app.NotificationManager
+import android.app.NotificationChannel
 import android.app.PendingIntent
+import android.media.AudioAttributes
 import androidx.test.core.app.ApplicationProvider
 import app.call2remind.core.model.OccurrenceState
 import app.call2remind.core.model.Schedule
@@ -19,6 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
 import java.time.ZoneOffset
 
 @RunWith(RobolectricTestRunner::class)
@@ -38,14 +41,36 @@ class RingNotificationsTest {
         val calls = manager.getNotificationChannel(RingNotifications.CHANNEL_CALLS)
         assertThat(calls.importance).isEqualTo(NotificationManager.IMPORTANCE_HIGH)
         assertThat(calls.sound).isNull()
+        // Alarm usage: DND treats the ringing notification as an alarm (not intercepted in
+        // alarms-only / priority mode, where our USAGE_ALARM ringtone still plays).
+        assertThat(calls.audioAttributes.usage).isEqualTo(AudioAttributes.USAGE_ALARM)
         assertThat(calls.shouldVibrate()).isFalse()
         assertThat(calls.lockscreenVisibility).isEqualTo(Notification.VISIBILITY_PUBLIC)
         val fallback = manager.getNotificationChannel(RingNotifications.CHANNEL_CALLS_FALLBACK)
         assertThat(fallback.importance).isEqualTo(NotificationManager.IMPORTANCE_HIGH)
         assertThat(fallback.shouldVibrate()).isTrue()
+        assertThat(fallback.audioAttributes.usage).isEqualTo(AudioAttributes.USAGE_ALARM)
         assertThat(manager.getNotificationChannel(RingNotifications.CHANNEL_MISSED)).isNotNull()
         assertThat(manager.getNotificationChannel(RingNotifications.CHANNEL_HINTS)).isNotNull()
         assertThat(manager.notificationChannels).hasSize(4)
+    }
+
+    @Test
+    fun ensureChannelsReplacesTheLegacyCallsChannel() {
+        manager.createNotificationChannel(
+            NotificationChannel(RingNotifications.LEGACY_CHANNEL_CALLS, "Calls", NotificationManager.IMPORTANCE_HIGH),
+        )
+
+        notifications.ensureChannels()
+
+        assertThat(RingNotifications.CHANNEL_CALLS).isNotEqualTo(RingNotifications.LEGACY_CHANNEL_CALLS)
+        assertThat(manager.getNotificationChannel(RingNotifications.LEGACY_CHANNEL_CALLS)).isNull()
+        assertThat(manager.notificationChannels.map { it.id }).containsExactly(
+            RingNotifications.CHANNEL_CALLS,
+            RingNotifications.CHANNEL_CALLS_FALLBACK,
+            RingNotifications.CHANNEL_MISSED,
+            RingNotifications.CHANNEL_HINTS,
+        )
     }
 
     @Test
@@ -53,7 +78,9 @@ class RingNotificationsTest {
         val notification = notifications.incomingCall(occ.id, "Pay rent", RingMode.FULL_SCREEN)
 
         assertThat(notification.channelId).isEqualTo(RingNotifications.CHANNEL_CALLS)
-        assertThat(notification.category).isEqualTo(Notification.CATEGORY_CALL)
+        assertThat(notification.category).isEqualTo(Notification.CATEGORY_ALARM)
+        assertThat(notification.flags and Notification.FLAG_INSISTENT).isEqualTo(0)
+        assertThat(notification.flags and Notification.FLAG_ONLY_ALERT_ONCE).isNotEqualTo(0)
         assertThat(notification.extras.getString(Notification.EXTRA_TEMPLATE)).isEqualTo(Notification.CallStyle::class.java.name)
         assertThat(notification.extras.getInt(Notification.EXTRA_CALL_TYPE)).isEqualTo(Notification.CallStyle.CALL_TYPE_INCOMING)
         assertThat(notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString()).isEqualTo("Pay rent")
@@ -91,6 +118,31 @@ class RingNotificationsTest {
         val fallback = notifications.incomingCall(occ.id, "x", RingMode.HEADS_UP_DEGRADED, fallback = true)
         assertThat(fallback.fullScreenIntent).isNotNull()
         assertThat(fallback.channelId).isEqualTo(RingNotifications.CHANNEL_CALLS_FALLBACK)
+        assertThat(fallback.category).isEqualTo(Notification.CATEGORY_ALARM)
+        // No service plays the ringtone: the channel sound must loop until the ring ends.
+        assertThat(fallback.flags and Notification.FLAG_INSISTENT).isNotEqualTo(0)
+    }
+
+    @Test
+    fun outsideAForegroundServiceACallStyleAlwaysHasAFullScreenIntent() {
+        // A CallStyle notification posted outside an FGS without a full-screen intent is rejected
+        // (IllegalArgumentException) by the system, so the service's fallback path forces one.
+        val outside = notifications.incomingCall(occ.id, "x", RingMode.HEADS_UP_DEGRADED, requireFullScreen = true)
+        assertThat(outside.fullScreenIntent).isNotNull()
+        assertThat(outside.channelId).isEqualTo(RingNotifications.CHANNEL_CALLS)
+        assertThat(outside.flags and Notification.FLAG_INSISTENT).isEqualTo(0)
+
+        val plainOngoing = notifications.ongoingCall(occ.id, "Pay rent", callStyle = false)
+        assertThat(plainOngoing.extras.getString(Notification.EXTRA_TEMPLATE)).isNotEqualTo(Notification.CallStyle::class.java.name)
+        val actions = plainOngoing.actions.orEmpty().map { shadowOf(it.actionIntent).savedIntent.action }
+        assertThat(actions).containsExactly(CallActionReceiver.ACTION_DONE, CallActionReceiver.ACTION_SNOOZE).inOrder()
+    }
+
+    @Test
+    @Config(sdk = [29])
+    fun ringingNotificationsAreAlarmsAlsoWhereCompatCallStyleSetsCategoryCall() {
+        assertThat(notifications.incomingCall(occ.id, "x", RingMode.FULL_SCREEN).category).isEqualTo(Notification.CATEGORY_ALARM)
+        assertThat(notifications.ongoingCall(occ.id, "x").category).isEqualTo(Notification.CATEGORY_ALARM)
     }
 
     @Test
@@ -103,6 +155,7 @@ class RingNotificationsTest {
     fun ongoingCallIsSilentWithHangUpAsDone() {
         val notification = notifications.ongoingCall(occ.id, "Pay rent")
 
+        assertThat(notification.category).isEqualTo(Notification.CATEGORY_ALARM)
         assertThat(notification.extras.getInt(Notification.EXTRA_CALL_TYPE)).isEqualTo(Notification.CallStyle.CALL_TYPE_ONGOING)
         assertThat(notification.extraIntent(Notification.EXTRA_HANG_UP_INTENT).action).isEqualTo(CallActionReceiver.ACTION_DONE)
         val actions = notification.actions.orEmpty().map { shadowOf(it.actionIntent).savedIntent.action }
@@ -135,11 +188,13 @@ class RingNotificationsTest {
     @Test
     fun notifyRespectsThePostNotificationsPermission() {
         notifications.ensureChannels()
-        notifications.notify(1, notifications.dndHint())
+        assertThat(notifications.canPostNotifications()).isFalse()
+        assertThat(notifications.notify(1, notifications.dndHint())).isFalse()
         assertThat(shadowOf(manager).allNotifications).isEmpty()
 
         grantPostNotifications()
-        notifications.notify(1, notifications.dndHint(), RingNotifications.TAG_MISSED)
+        assertThat(notifications.canPostNotifications()).isTrue()
+        assertThat(notifications.notify(1, notifications.dndHint(), RingNotifications.TAG_MISSED)).isTrue()
         assertThat(shadowOf(manager).getNotification(RingNotifications.TAG_MISSED, 1)).isNotNull()
 
         notifications.cancel(1, RingNotifications.TAG_MISSED)
@@ -150,5 +205,16 @@ class RingNotificationsTest {
     fun perOccurrenceIdsAreStable() {
         assertThat(notifications.missedId(occ)).isEqualTo(occ.requestCode)
         assertThat(notifications.fallbackId(occ)).isEqualTo(occ.requestCode)
+    }
+
+    @Test
+    fun ringIdsAreStablePerOccurrenceDistinctAndNeverAFixedId() {
+        val other = occurrence(reminder("b", Schedule.At(T0)), T0)
+
+        assertThat(notifications.ringId(occ.id)).isEqualTo(notifications.ringId(occ.id))
+        assertThat(notifications.ringId(occ.id)).isEqualTo(occ.requestCode)
+        assertThat(notifications.ringId(other.id)).isNotEqualTo(notifications.ringId(occ.id))
+        val ids = (1..2_000).map { notifications.ringId("occ-$it") }
+        assertThat(ids).containsNoneOf(RingNotifications.RING_NOTIFICATION_ID, RingNotifications.DND_HINT_ID)
     }
 }

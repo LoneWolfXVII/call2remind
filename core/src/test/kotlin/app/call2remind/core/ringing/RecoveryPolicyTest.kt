@@ -101,4 +101,23 @@ class RecoveryPolicyTest {
 
         assertThat(strict.actionFor(late, now)).isInstanceOf(RecoveryAction.MarkMissed::class.java)
     }
+
+    @Test
+    fun deadlineIsWhenRecoveryActsOnARing() {
+        val ringing = occurrence(fireAt = now, state = OccurrenceState.RINGING)
+        val deadline = requireNotNull(policy.deadline(ringing))
+        assertThat(deadline).isEqualTo(now.plusSeconds(45 + 30))
+        assertThat(policy.actionFor(ringing, deadline.minusMillis(1))).isNull()
+        assertThat(policy.actionFor(ringing, deadline)).isInstanceOf(RecoveryAction.TimeOutRinging::class.java)
+
+        val answered = ringing.copy(answeredAt = now.plusSeconds(10))
+        val staleAt = requireNotNull(policy.deadline(answered))
+        assertThat(staleAt).isEqualTo(now.plusSeconds(10).plus(Duration.ofMinutes(15)))
+        assertThat(policy.actionFor(answered, staleAt.minusMillis(1))).isNull()
+        assertThat(policy.actionFor(answered, staleAt)).isEqualTo(RecoveryAction.FinishAnswered(answered))
+
+        assertThat(policy.deadline(occurrence(fireAt = now))).isNull()
+        assertThat(policy.deadline(occurrence(fireAt = now, state = OccurrenceState.SNOOZED))).isNull()
+        assertThat(policy.deadline(occurrence(fireAt = now, state = OccurrenceState.DONE))).isNull()
+    }
 }

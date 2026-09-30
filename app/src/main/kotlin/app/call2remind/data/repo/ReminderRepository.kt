@@ -29,6 +29,12 @@ interface ReminderRepository {
     suspend fun get(id: String): Reminder?
 
     /**
+     * Readable reminders plus the ids of stored rows that could not be read (corrupt schedule
+     * or zone). The planner must not mistake an unreadable reminder for a removed one.
+     */
+    suspend fun getAllForPlanning(): ReminderSnapshot = ReminderSnapshot(getAll(), emptySet())
+
+    /**
      * Inserts or updates [reminders], attributed to [sourceId]. If a stored reminder already has
      * the same `(sourceType, externalId)` under a different id, the stored id is kept (the
      * returned list carries the ids actually used).
@@ -46,6 +52,9 @@ interface ReminderRepository {
 
     suspend fun delete(ids: Collection<String>): Int
 }
+
+/** See [ReminderRepository.getAllForPlanning]. */
+data class ReminderSnapshot(val reminders: List<Reminder>, val unreadableIds: Set<String>)
 
 /** Outcome of [ReminderRepository.replaceForSource]. */
 data class SourceReplaceResult(val upserted: List<Reminder>, val deletedIds: List<String>)
@@ -76,6 +85,17 @@ class RoomReminderRepository @Inject constructor(
     override suspend fun getAll(): List<Reminder> = dao.getAll().mapNotNull { it.toModelOrNull() }
 
     override suspend fun get(id: String): Reminder? = dao.get(id)?.toModelOrNull()
+
+    override suspend fun getAllForPlanning(): ReminderSnapshot {
+        val rows = dao.getAll()
+        val readable = ArrayList<Reminder>(rows.size)
+        val unreadable = HashSet<String>()
+        for (row in rows) {
+            val reminder = row.toModelOrNull()
+            if (reminder == null) unreadable += row.id else readable += reminder
+        }
+        return ReminderSnapshot(readable, unreadable)
+    }
 
     override suspend fun upsertAll(reminders: List<Reminder>, sourceId: String?): List<Reminder> =
         db.withTransaction {

@@ -7,13 +7,11 @@ import app.call2remind.R
 import app.call2remind.core.log.RingLogEvent
 import app.call2remind.core.log.RingLogType
 import app.call2remind.core.model.Occurrence
-import app.call2remind.core.ringing.RecoveryPolicy
 import app.call2remind.core.ringing.RingMode
 import app.call2remind.data.repo.OccurrenceRepository
 import app.call2remind.data.repo.ReminderRepository
 import app.call2remind.scheduling.AlarmScheduler
 import app.call2remind.scheduling.MissedNotifier
-import app.call2remind.settings.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Clock
 import java.time.Duration
@@ -22,6 +20,14 @@ import javax.inject.Singleton
 
 /** Starts the ringing UI for an occurrence whose ring lock is already held. */
 interface RingLauncher {
+    companion object {
+        /** FAILED reason: the ringing foreground service could not be started. */
+        const val REASON_FGS_REFUSED = "fgs_start_not_allowed"
+
+        /** FAILED reason: the fallback ring notification could not be posted (POST_NOTIFICATIONS denied or rejected). */
+        const val REASON_NOTIFICATION_BLOCKED = "notification_blocked"
+    }
+
     /** [occurrence] is RINGING: start the ringing service (or the fallback notification). */
     suspend fun startRinging(occurrence: Occurrence)
 
@@ -36,33 +42,34 @@ class AndroidRingLauncher @Inject constructor(
     private val occurrences: OccurrenceRepository,
     private val notifications: RingNotifications,
     private val alarms: AlarmScheduler,
-    private val settings: SettingsRepository,
     private val clock: Clock,
 ) : RingLauncher {
 
+    /**
+     * Without a service there is no ring timer; the occurrence's deadline alarm (armed when the
+     * ring was claimed, see [app.call2remind.scheduling.SchedulingEngine.claimNext]) times the
+     * ring out and frees the line.
+     */
     override suspend fun startRinging(occurrence: Occurrence) {
         val title = titleOf(occurrence)
         try {
             ContextCompat.startForegroundService(context, RingingService.ringIntent(context, occurrence.id, title))
         } catch (e: IllegalStateException) {
             // ForegroundServiceStartNotAllowedException (API 31+) or background-start refusal:
-            // ring with a high-priority CallStyle notification on the sounding channel instead.
+            // ring with a high-priority, insistent CallStyle notification on the sounding channel.
             Log.w(TAG, "Cannot start ringing service", e)
             notifications.ensureChannels()
-            notifications.notify(
+            val posted = notifications.notify(
                 notifications.fallbackId(occurrence),
                 notifications.incomingCall(occurrence.id, title, RingMode.FULL_SCREEN, fallback = true),
                 RingNotifications.TAG_FALLBACK,
             )
             val now = clock.instant()
-            occurrences.appendLog(RingLogEvent(occurrence.id, RingLogType.FAILED, now, REASON_FGS_REFUSED))
-            // No service means no ring timer: an alarm just after the recovery threshold lets the
-            // alarm receiver's recovery time the ring out (auto-snooze) and free the line.
-            val timeoutAt = now
-                .plus(settings.current().snoozePolicy.ringTimeout)
-                .plus(RecoveryPolicy().ringingGrace)
-                .plus(TIMEOUT_SLACK)
-            alarms.arm(occurrence, timeoutAt, isSoonest = false)
+            occurrences.appendLog(RingLogEvent(occurrence.id, RingLogType.FAILED, now, RingLauncher.REASON_FGS_REFUSED))
+            if (!posted) {
+                Log.e(TAG, "Fallback ring notification not posted (notifications blocked?)")
+                occurrences.appendLog(RingLogEvent(occurrence.id, RingLogType.FAILED, now, RingLauncher.REASON_NOTIFICATION_BLOCKED))
+            }
         }
     }
 
@@ -86,9 +93,7 @@ class AndroidRingLauncher @Inject constructor(
 
     private companion object {
         const val TAG = "RingLauncher"
-        const val REASON_FGS_REFUSED = "fgs_start_not_allowed"
         val DEFER_RECHECK: Duration = Duration.ofMinutes(1)
-        val TIMEOUT_SLACK: Duration = Duration.ofSeconds(1)
     }
 }
 

@@ -26,7 +26,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
-import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
 class RingLauncherTest {
@@ -47,7 +46,7 @@ class RingLauncherTest {
     }
 
     private fun launcher(context: Context = app) =
-        AndroidRingLauncher(context, h.reminders, h.occurrences, notifications, h.alarms, h.settings, h.clock)
+        AndroidRingLauncher(context, h.reminders, h.occurrences, notifications, h.alarms, h.clock)
 
     @Before
     fun setUp() = runBlocking<Unit> {
@@ -71,7 +70,7 @@ class RingLauncherTest {
     }
 
     @Test
-    fun refusedServiceStartFallsBackToASoundingCallNotification() = runBlocking<Unit> {
+    fun refusedServiceStartFallsBackToASoundingInsistentAlarmNotification() = runBlocking<Unit> {
         launcher(refusingContext).startRinging(occ)
 
         val posted: Notification = requireNotNull(
@@ -79,16 +78,28 @@ class RingLauncherTest {
         )
         assertThat(posted.channelId).isEqualTo(RingNotifications.CHANNEL_CALLS_FALLBACK)
         assertThat(posted.fullScreenIntent).isNotNull()
-        assertThat(posted.category).isEqualTo(Notification.CATEGORY_CALL)
+        assertThat(posted.category).isEqualTo(Notification.CATEGORY_ALARM)
+        assertThat(posted.flags and Notification.FLAG_INSISTENT).isNotEqualTo(0)
 
         val log = h.occurrences.getRingLog(occ.id).single()
         assertThat(log.type).isEqualTo(RingLogType.FAILED)
-        assertThat(log.reason).isEqualTo("fgs_start_not_allowed")
+        assertThat(log.reason).isEqualTo(RingLauncher.REASON_FGS_REFUSED)
 
-        // Without a service there is no ring timer: an alarm lets recovery time the ring out.
-        val armed = requireNotNull(h.alarms.armed[occ.id])
-        assertThat(armed.at).isGreaterThan(T0.plus(h.settings.current().ringTimeout).plus(Duration.ofSeconds(30)))
-        assertThat(armed.at).isLessThan(T0.plus(minutes(2)))
+        // The ring's deadline alarm (armed by the engine's claim) times it out: no ad-hoc alarm here.
+        assertThat(h.alarms.armCalls).isEmpty()
+    }
+
+    @Test
+    fun blockedFallbackNotificationIsLoggedAsFailed() = runBlocking<Unit> {
+        shadowOf(app).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
+
+        launcher(refusingContext).startRinging(occ)
+
+        assertThat(shadowOf(manager).allNotifications).isEmpty()
+        assertThat(h.occurrences.getRingLog(occ.id).map { it.type to it.reason }).containsExactly(
+            RingLogType.FAILED to RingLauncher.REASON_FGS_REFUSED,
+            RingLogType.FAILED to RingLauncher.REASON_NOTIFICATION_BLOCKED,
+        ).inOrder()
     }
 
     @Test

@@ -8,6 +8,7 @@ import android.content.pm.ServiceInfo
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import app.call2remind.core.log.RingLogEvent
+import app.call2remind.core.log.RingLogType
 import app.call2remind.core.model.Occurrence
 import app.call2remind.core.model.OccurrenceState
 import app.call2remind.core.model.Schedule
@@ -69,6 +70,10 @@ class RingingServiceTest {
 
     @Inject lateinit var db: Call2RemindDb
 
+    @Inject lateinit var notifications: RingNotifications
+
+    @Inject lateinit var wakeLock: RingWakeLock
+
     private val app: Application = ApplicationProvider.getApplicationContext()
     private val notificationManager = app.getSystemService(NotificationManager::class.java)
     private var controller: ServiceController<RingingService>? = null
@@ -113,16 +118,25 @@ class RingingServiceTest {
 
     private val Notification.title: String get() = extras.getCharSequence(Notification.EXTRA_TITLE).toString()
 
+    private val Notification.text: String get() = extras.getCharSequence(Notification.EXTRA_TEXT).toString()
+
+    private val Notification.fullScreenOccurrenceId: String?
+        get() = fullScreenIntent?.let { shadowOf(it).savedIntent.getStringExtra(IncomingCallActivity.EXTRA_OCCURRENCE_ID) }
+
     @Test
+    @Config(sdk = [34, 35])
     fun ringsAsAForegroundIncomingCallWithFullScreenIntentAndAlerts() {
         val occ = dueOccurrence("a", "Pay rent")
 
         val (service, shadow) = ring(occ, "Pay rent")
 
         val notification = requireNotNull(shadow.lastForegroundNotification)
-        assertThat(shadow.lastForegroundNotificationId).isEqualTo(RingNotifications.RING_NOTIFICATION_ID)
+        assertThat(shadow.lastForegroundNotificationId).isEqualTo(notifications.ringId(occ.id))
         assertThat(service.foregroundServiceType).isEqualTo(ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         assertThat(notification.channelId).isEqualTo(RingNotifications.CHANNEL_CALLS)
+        assertThat(notification.category).isEqualTo(Notification.CATEGORY_ALARM)
+        assertThat(notification.fullScreenOccurrenceId).isEqualTo(occ.id)
+        assertThat(wakeLock.isHeld).isTrue()
         assertThat(notification.extras.getString(Notification.EXTRA_TEMPLATE)).isEqualTo(Notification.CallStyle::class.java.name)
         assertThat(notification.callType).isEqualTo(Notification.CallStyle.CALL_TYPE_INCOMING)
         assertThat(notification.fullScreenIntent).isNotNull()
@@ -155,6 +169,8 @@ class RingingServiceTest {
         assertThat(shadow.isForegroundStopped).isTrue()
         assertThat(alerts.active).isNull()
         assertThat(state(occ.id)?.state).isEqualTo(OccurrenceState.SNOOZED)
+        assertThat(wakeLock.isHeld).isFalse()
+        assertThat(shadowOf(notificationManager).getNotification(notifications.ringId(occ.id))).isNull()
     }
 
     @Test
@@ -221,11 +237,14 @@ class RingingServiceTest {
     }
 
     @Test
+    @Config(sdk = [34, 35])
     fun ringsQueuedOccurrencesOneAfterAnotherInTheSameService() {
         val meeting = dueOccurrence("m", "Meeting", SourceType.CALENDAR)
         val habit = dueOccurrence("h", "Stretch", SourceType.HABIT)
         val (_, shadow) = ring(meeting, "Meeting")
         assertThat(state(habit.id)?.state).isEqualTo(OccurrenceState.SCHEDULED)
+        val meetingId = notifications.ringId(meeting.id)
+        assertThat(shadow.lastForegroundNotificationId).isEqualTo(meetingId)
 
         runBlocking { engine.handle(meeting.id, OccurrenceEvent.Skip) }
 
@@ -233,6 +252,59 @@ class RingingServiceTest {
         awaitUntil(message = "second notification") { shadow.lastForegroundNotification?.title == "Stretch" }
         assertThat(shadow.isStoppedBySelf).isFalse()
         assertThat(alerts.starts).hasSize(2)
+        // A NEW notification (own id, own full-screen intent) so the second call alerts again
+        // (onlyAlertOnce would silence an update of the first); the first one is gone.
+        val habitId = notifications.ringId(habit.id)
+        assertThat(habitId).isNotEqualTo(meetingId)
+        assertThat(shadow.lastForegroundNotificationId).isEqualTo(habitId)
+        assertThat(shadow.lastForegroundNotification?.fullScreenOccurrenceId).isEqualTo(habit.id)
+        assertThat(shadowOf(notificationManager).getNotification(meetingId)).isNull()
+        assertThat(shadowOf(notificationManager).getNotification(habitId)).isNotNull()
+    }
+
+    @Test
+    @Config(sdk = [34, 35])
+    fun aRealCallStartingMidRingSilencesItGivesTheLineBackAndItRingsAfterTheCall() {
+        val occ = dueOccurrence("a", "Pay rent")
+        val (_, shadow) = ring(occ, "Pay rent")
+
+        ringContext.context = FakeRingContextProvider.IDLE.copy(inRealCall = true)
+        callState.inCall.value = true
+
+        awaitUntil(message = "deferred") { state(occ.id)?.state == OccurrenceState.SCHEDULED && alerts.active == null }
+        assertThat(state(occ.id)?.ringBacks).isEqualTo(0)
+        assertThat(runBlocking { occurrences.getRingLog(occ.id) }.map { it.type }).contains(RingLogType.DEFERRED)
+        awaitUntil(message = "deferred notification") { shadow.lastForegroundNotification?.text?.contains("Pay rent") == true }
+        assertThat(shadow.lastForegroundNotificationId).isEqualTo(RingNotifications.RING_NOTIFICATION_ID)
+        assertThat(shadow.isStoppedBySelf).isFalse()
+
+        clock.advance(minutes(2))
+        ringContext.context = FakeRingContextProvider.IDLE
+        callState.inCall.value = false
+
+        awaitUntil(message = "rings after the call") { state(occ.id)?.state == OccurrenceState.RINGING && alerts.active != null }
+        assertThat(state(occ.id)?.ringBacks).isEqualTo(0)
+        awaitUntil(message = "incoming again") { shadow.lastForegroundNotification?.callType == Notification.CallStyle.CALL_TYPE_INCOMING }
+    }
+
+    @Test
+    fun aRingStartingDuringARealCallGivesTheLineBackWithoutAlerting() {
+        val occ = dueOccurrence("a", "Pay rent")
+        runBlocking { check(occurrences.tryClaimRing(occ.id, clock.now)) }
+        ringContext.context = FakeRingContextProvider.IDLE.copy(inRealCall = true)
+        callState.inCall.value = true
+
+        val (_, shadow) = startService(RingingService.ringIntent(app, occ.id, "Pay rent"))
+
+        awaitUntil(message = "given back") { state(occ.id)?.state == OccurrenceState.SCHEDULED }
+        assertThat(alerts.starts).isEmpty()
+        assertThat(shadow.lastForegroundNotification?.callType).isNotEqualTo(Notification.CallStyle.CALL_TYPE_INCOMING)
+        assertThat(shadow.lastForegroundNotification?.text).contains("Pay rent")
+
+        ringContext.context = FakeRingContextProvider.IDLE
+        callState.inCall.value = false
+
+        awaitUntil(message = "rings after the call") { state(occ.id)?.state == OccurrenceState.RINGING && alerts.active != null }
     }
 
     @Test

@@ -1,5 +1,6 @@
 package app.call2remind.scheduling
 
+import android.util.Log
 import app.call2remind.core.log.RingLogEvent
 import app.call2remind.core.log.RingLogType
 import app.call2remind.core.model.Occurrence
@@ -92,7 +93,18 @@ class SchedulingEngine @Inject constructor(
         val now = clock.instant()
         val current = settings.current()
         val planner = OccurrencePlanner(clock, current.defaultTimes, OccurrencePlanner.DEFAULT_WINDOW, lookback)
-        val plan = planner.plan(reminders.getAll(), occurrences.getForPlanning(now.minus(lookback)), now)
+        val snapshot = reminders.getAllForPlanning()
+        val existing = occurrences.getForPlanning(now.minus(lookback)).let { rows ->
+            if (snapshot.unreadableIds.isEmpty()) {
+                rows
+            } else {
+                // A corrupt reminder row is not a removed reminder: keep its occurrences as they are
+                // (they still ring, with a fallback title) instead of cancelling them.
+                Log.w(TAG, "Not planning ${snapshot.unreadableIds.size} unreadable reminder(s): ${snapshot.unreadableIds}")
+                rows.filterNot { it.reminderId in snapshot.unreadableIds }
+            }
+        }
+        val plan = planner.plan(snapshot.reminders, existing, now)
         val applied = if (plan.hasChanges) {
             occurrences.applyPlan(plan)
         } else {
@@ -110,18 +122,27 @@ class SchedulingEngine @Inject constructor(
     }
 
     /**
-     * Arms the alarm of every SCHEDULED/SNOOZED occurrence due at or after now (soonest first,
-     * capped at [MAX_ARMED_ALARMS]). With [armOverdue], overdue ones are armed to fire
-     * immediately so the alarm receiver rings them (recovery path). Returns the number armed.
+     * Arms the alarm of every SCHEDULED/SNOOZED occurrence due at or after now, and of every
+     * RINGING occurrence at its ring deadline ([RecoveryPolicy.deadline] + [DEADLINE_SLACK], or
+     * now if already past), soonest first, capped at [MAX_ARMED_ALARMS]. With [armOverdue],
+     * overdue pending ones are armed to fire immediately so the alarm receiver rings them
+     * (recovery path). Returns the number armed.
+     *
+     * The deadline alarm of a ringing occurrence is what frees the line promptly when its ringing
+     * service died or never started: it runs the receiver's recovery + ring queue, which times the
+     * ring out (or finishes an abandoned answered call) and rings whatever queued up behind it.
      */
     suspend fun reconcile(armOverdue: Boolean = false): Int = mutex.withLock {
         reconcileLocked(clock.instant(), armOverdue)
     }
 
     private suspend fun reconcileLocked(now: Instant, armOverdue: Boolean): Int {
-        val targets = occurrences.getPending()
+        val policy = recoveryPolicy()
+        val targets = occurrences.getActive()
             .mapNotNull { occurrence ->
                 when {
+                    occurrence.state == OccurrenceState.RINGING ->
+                        policy.deadline(occurrence)?.let { occurrence to maxOf(it.plus(DEADLINE_SLACK), now) }
                     !occurrence.fireAt.isBefore(now) -> occurrence to occurrence.fireAt
                     armOverdue -> occurrence to now
                     else -> null
@@ -135,15 +156,21 @@ class SchedulingEngine @Inject constructor(
 
     /**
      * Applies [event] to occurrence [occurrenceId] (one transaction incl. ring log), then cancels
-     * its alarm if it no longer needs one, re-arms (a snooze gets its new alarm), and posts or
-     * clears missed notifications. Returns `null` if the occurrence does not exist.
+     * its alarm if it no longer needs one, re-arms (a snooze gets its new alarm, an answered ring
+     * its new deadline), and posts or clears missed notifications. Returns `null` if the
+     * occurrence does not exist.
+     *
+     * When the occurrence leaves RINGING the line is free: overdue occurrences that queued up
+     * behind it (their alarms were consumed while the line was busy) get an immediate alarm, so
+     * they ring even if no ringing service is alive to pump the queue.
      */
     suspend fun handle(occurrenceId: String, event: OccurrenceEvent): TransitionResult? {
         val result = occurrences.transition(occurrenceId, event) ?: return null
         if (result is TransitionResult.Transitioned) {
             val occurrence = result.occurrence
-            val needsAlarm = occurrence.state == OccurrenceState.SCHEDULED || occurrence.state == OccurrenceState.SNOOZED
-            if (result.from == OccurrenceState.RINGING && occurrence.state != OccurrenceState.RINGING) {
+            val needsAlarm = occurrence.state.isActive
+            val leftRinging = result.from == OccurrenceState.RINGING && occurrence.state != OccurrenceState.RINGING
+            if (leftRinging) {
                 missedNotifier.onRingEnded(occurrence)
             }
             when {
@@ -157,7 +184,7 @@ class SchedulingEngine @Inject constructor(
             // old state cannot re-arm this occurrence's alarm after it was cancelled.
             mutex.withLock {
                 if (!needsAlarm) alarms.cancel(occurrence)
-                reconcileLocked(clock.instant(), armOverdue = false)
+                reconcileLocked(clock.instant(), armOverdue = leftRinging)
             }
         }
         return result
@@ -169,8 +196,7 @@ class SchedulingEngine @Inject constructor(
      * queue / an immediate alarm to ring.
      */
     suspend fun recover(): List<RecoveryAction> {
-        val policy = RecoveryPolicy(snoozePolicy = settings.current().snoozePolicy)
-        val actions = policy.recover(occurrences.getActive(), clock.instant())
+        val actions = recoveryPolicy().recover(occurrences.getActive(), clock.instant())
         for (action in actions) {
             when (action) {
                 is RecoveryAction.RingNow -> Unit
@@ -231,14 +257,27 @@ class SchedulingEngine @Inject constructor(
     }
 
     /**
-     * Ring queue step: recovers stale rings, then claims the ring lock for the next due
-     * occurrence ([RingQueue] order). Returns [RingStep.Defer] (logging DEFERRED) while the user
-     * is in a real phone call; the occurrences stay pending.
+     * Ring queue step: claims the ring lock for the next due occurrence ([RingQueue] order).
+     * Recovery runs first only when it could change the outcome (a stale ring holds the line, or
+     * a due occurrence is too late to ring), so the common path reaches the claim — and the
+     * caller's foreground-service start — quickly, inside the alarm's start allowance.
+     *
+     * The claimed occurrence's alarm (just consumed by firing) is re-armed at its ring deadline,
+     * so a ring whose service never starts or dies is recovered promptly.
+     *
+     * Returns [RingStep.Defer] (logging DEFERRED) while the user is in a real phone call; the
+     * occurrences stay pending. On [RingStep.LineBusy] the ringing occurrence's deadline alarm
+     * (armed by [reconcile], which callers run afterwards) pumps the queue if its service dies.
      */
     suspend fun claimNext(): RingStep {
-        recover()
-        val now = clock.instant()
-        val active = occurrences.getActive()
+        val policy = recoveryPolicy()
+        var now = clock.instant()
+        var active = occurrences.getActive()
+        if (active.any { policy.needsRecoveryBeforeClaim(it, now) }) {
+            recover()
+            now = clock.instant()
+            active = occurrences.getActive()
+        }
         if (RingQueue.isLineBusy(active)) return RingStep.LineBusy
         val due = RingQueue.due(active, now)
         if (due.isEmpty()) return RingStep.Idle
@@ -248,8 +287,10 @@ class SchedulingEngine @Inject constructor(
         }
         for (candidate in due) {
             if (occurrences.tryClaimRing(candidate.id, now)) {
-                mutex.withLock { alarms.cancel(candidate) }
                 val claimed = occurrences.get(candidate.id) ?: continue
+                // Not under the mutex: a concurrent replan must not delay the ring. Re-arming is
+                // idempotent, and reconcile re-derives the same deadline.
+                policy.deadline(claimed)?.let { alarms.arm(claimed, it.plus(DEADLINE_SLACK), isSoonest = true) }
                 return RingStep.Ring(claimed)
             }
         }
@@ -282,7 +323,9 @@ class SchedulingEngine @Inject constructor(
      * planned at [plannedAt] (normally the reminder's own `Schedule.At` instant), then arms an
      * immediate alarm; the alarm receiver claims the lock and rings, so this never double-rings.
      */
-    suspend fun ringImmediately(reminder: Reminder, plannedAt: Instant, sourceId: String? = null): Occurrence {
+    suspend fun ringImmediately(reminder: Reminder, plannedAt: Instant, sourceId: String? = null): Occurrence = mutex.withLock {
+        // Under the scheduling lock: a concurrent replan that read the reminders before this
+        // upsert must not then see the new occurrence and cancel it as REMINDER_REMOVED.
         val stored = reminders.upsert(reminder, sourceId)
         val occurrence = Occurrence.scheduled(stored, plannedAt)
         occurrences.insertIfAbsent(occurrence)
@@ -291,10 +334,23 @@ class SchedulingEngine @Inject constructor(
             val now = clock.instant()
             alarms.arm(current, if (current.fireAt.isAfter(now)) current.fireAt else now, isSoonest = true)
         }
-        return current
+        current
     }
 
+    /** Recovery would mark, time out or finish [occurrence] (anything but "ring it now"). */
+    private fun RecoveryPolicy.needsRecoveryBeforeClaim(occurrence: Occurrence, now: Instant): Boolean {
+        val action = actionFor(occurrence, now)
+        return action != null && action !is RecoveryAction.RingNow
+    }
+
+    private suspend fun recoveryPolicy(): RecoveryPolicy = RecoveryPolicy(snoozePolicy = settings.current().snoozePolicy)
+
     companion object {
+        private const val TAG = "SchedulingEngine"
+
+        /** A ring's deadline alarm fires this long after [RecoveryPolicy.deadline], so recovery acts on it. */
+        val DEADLINE_SLACK: Duration = Duration.ofSeconds(1)
+
         /** How far back the boot path plans; matches the "ring if < 2 h late" recovery rule. */
         val BOOT_LOOKBACK: Duration = RecoveryPolicy().ringIfLateWithin
 

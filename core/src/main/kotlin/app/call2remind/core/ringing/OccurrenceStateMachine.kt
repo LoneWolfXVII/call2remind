@@ -26,6 +26,7 @@ import java.time.Instant
  * | SCHEDULED, SNOOZED, RINGING, MISSED | Done          | DONE                                |
  * | SCHEDULED, SNOOZED, RINGING | Skip                  | SKIPPED                             |
  * | SCHEDULED, SNOOZED, RINGING | MarkMissed            | MISSED                              |
+ * | RINGING unanswered  | Defer                         | SNOOZED if ringBacks > 0 else SCHEDULED, fireAt kept (due) |
  *
  * \* MISSED when `ringBacks` has already reached [SnoozePolicy.maxRingBacks], except for an
  * explicit Snooze after answering, which is never capped (see [SnoozePolicy.canSnooze]).
@@ -96,6 +97,15 @@ class OccurrenceStateMachine(
             OccurrenceEvent.MarkMissed ->
                 if (pending || ringing) {
                     accept(state, occurrence.copy(state = MISSED, answeredAt = null), RingLogType.MISSED, now)
+                } else {
+                    invalid
+                }
+
+            OccurrenceEvent.Defer ->
+                if (unanswered) {
+                    val pendingState = if (occurrence.ringBacks > 0) SNOOZED else SCHEDULED
+                    val released = occurrence.copy(state = pendingState, answeredAt = null)
+                    accept(state, released, RingLogType.DEFERRED, now, RingLogEvent.REASON_IN_CALL)
                 } else {
                     invalid
                 }

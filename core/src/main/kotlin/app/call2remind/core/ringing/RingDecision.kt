@@ -21,6 +21,8 @@ enum class RingMode {
 /**
  * Device conditions at ring time.
  *
+ * @property dndTotalSilence Do Not Disturb silences alarms (total silence, or priority mode with
+ * alarms excluded). Alarms-only and default priority mode let our ring (an alarm) through.
  * @property screenInteractive only qualifies [appInForeground]: an overlay is used only when the
  * screen is on, since an overlay cannot turn the screen on.
  */

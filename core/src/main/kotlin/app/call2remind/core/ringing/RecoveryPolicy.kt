@@ -48,6 +48,22 @@ data class RecoveryPolicy(
             .sortedWith(RingQueue.ORDER)
             .mapNotNull { actionFor(it, now) }
 
+    /**
+     * When recovery will act on a RINGING [occurrence] if it is still ringing then: the ring
+     * timeout plus [ringingGrace] after the ring started (unanswered), or [answeredStaleAfter]
+     * after it was answered. `null` for any other state. Arm an alarm at (or just after) this
+     * instant so a ring whose service died is recovered promptly, without waiting for the watchdog.
+     */
+    fun deadline(occurrence: Occurrence): Instant? {
+        if (occurrence.state != OccurrenceState.RINGING) return null
+        val answeredAt = occurrence.answeredAt
+        return if (answeredAt == null) {
+            occurrence.fireAt.plus(snoozePolicy.ringTimeout).plus(ringingGrace)
+        } else {
+            answeredAt.plus(answeredStaleAfter)
+        }
+    }
+
     /** Action for a single [occurrence] at [now], or `null` if it needs none. */
     fun actionFor(occurrence: Occurrence, now: Instant): RecoveryAction? = when (occurrence.state) {
         OccurrenceState.SCHEDULED, OccurrenceState.SNOOZED -> {

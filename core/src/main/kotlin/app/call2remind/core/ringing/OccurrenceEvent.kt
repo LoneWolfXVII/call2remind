@@ -31,4 +31,11 @@ sealed interface OccurrenceEvent {
 
     /** Give up on this occurrence (e.g. recovery found it too late). */
     data object MarkMissed : OccurrenceEvent
+
+    /**
+     * A real phone call started before the (unanswered) ring was picked up: give the line back
+     * without using a ring-back. The occurrence becomes pending again, due immediately, and rings
+     * once the call ends.
+     */
+    data object Defer : OccurrenceEvent
 }

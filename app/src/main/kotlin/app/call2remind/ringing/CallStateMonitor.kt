@@ -21,6 +21,9 @@ interface CallStateMonitor {
 
     /** Suspends until no call is active (returns immediately if none is). */
     suspend fun awaitCallEnded()
+
+    /** Suspends until a call is active (returns immediately if one is). */
+    suspend fun awaitCallStarted()
 }
 
 /**
@@ -44,6 +47,15 @@ class AndroidCallStateMonitor @Inject constructor(
         }
     }
 
+    override suspend fun awaitCallStarted() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val changes = modeChanges()
+            while (!isInCall()) withTimeoutOrNull(START_POLL_MS) { changes.first() }
+        } else {
+            while (!isInCall()) delay(START_POLL_MS)
+        }
+    }
+
     @RequiresApi(Build.VERSION_CODES.S)
     private fun modeChanges(): Flow<Int> = callbackFlow {
         val listener = AudioManager.OnModeChangedListener { mode -> trySend(mode) }
@@ -54,5 +66,8 @@ class AndroidCallStateMonitor @Inject constructor(
     private companion object {
         const val RECHECK_MS = 30_000L
         const val POLL_MS = 5_000L
+
+        /** Re-check / poll interval while ringing: a call starting mid-ring should silence us quickly. */
+        const val START_POLL_MS = 1_000L
     }
 }

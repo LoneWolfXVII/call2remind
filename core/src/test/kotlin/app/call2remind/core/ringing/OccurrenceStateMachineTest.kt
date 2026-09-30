@@ -262,6 +262,29 @@ class OccurrenceStateMachineTest {
     }
 
     @Test
+    fun deferGivesAnUnansweredRingBackWithoutUsingARingBack() {
+        val first = accepted(machine.transition(inState(RINGING), OccurrenceEvent.Defer))
+        assertThat(first.state).isEqualTo(SCHEDULED)
+        assertThat(first.occurrence.fireAt).isEqualTo(planned)
+        assertThat(first.occurrence.ringBacks).isEqualTo(0)
+        assertThat(first.nextFireAt).isNull()
+        assertThat(first.logEvent).isEqualTo(RingLogEvent("o1", RingLogType.DEFERRED, now, RingLogEvent.REASON_IN_CALL))
+        assertThat(first.from).isEqualTo(RINGING)
+
+        val later = accepted(machine.transition(inState(RINGING, ringBacks = 2), OccurrenceEvent.Defer))
+        assertThat(later.state).isEqualTo(SNOOZED)
+        assertThat(later.occurrence.ringBacks).isEqualTo(2)
+    }
+
+    @Test
+    fun deferIsOnlyForUnansweredRings() {
+        assertInvalid(inState(RINGING, answered = true), OccurrenceEvent.Defer)
+        assertInvalid(inState(SCHEDULED), OccurrenceEvent.Defer)
+        assertInvalid(inState(SNOOZED), OccurrenceEvent.Defer)
+        assertInvalid(inState(DONE), OccurrenceEvent.Defer)
+    }
+
+    @Test
     fun snoozeRequiresPositiveDuration() {
         assertThrows(IllegalArgumentException::class.java) { OccurrenceEvent.Snooze(Duration.ZERO) }
         assertThrows(IllegalArgumentException::class.java) { OccurrenceEvent.Snooze(Duration.ofMinutes(-5)) }
