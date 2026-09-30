@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import app.call2remind.scheduling.AndroidAlarmScheduler
 import app.call2remind.ui.call.CallActions
 import app.call2remind.ui.call.CallPresentationViewModel
@@ -24,7 +25,9 @@ import app.call2remind.ui.call.CallScreen
 import app.call2remind.ui.system.SystemIntents
 import app.call2remind.ui.theme.Call2RemindTheme
 import app.call2remind.ui.theme.LightColors
+import app.call2remind.ui.theme.preloadFonts
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 
 /**
  * Full-screen incoming call (shown over the lock screen, turns the screen on): the plug-into-socket
@@ -53,6 +56,7 @@ class IncomingCallActivity : ComponentActivity() {
         window.setBackgroundDrawable(ColorDrawable(panel))
         showOverLockScreen()
         if (savedInstanceState == null) handleAnswer(intent)
+        lifecycleScope.launch { preloadFonts(applicationContext) }
         setContent {
             Call2RemindTheme {
                 val state by viewModel.state.collectAsStateWithLifecycle()

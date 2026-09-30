@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import app.call2remind.sync.CalendarChangeObserver
 import app.call2remind.sync.SyncScheduler
 import app.call2remind.ui.navigation.AppViewModel
@@ -22,7 +23,9 @@ import app.call2remind.ui.theme.C2RTheme
 import app.call2remind.ui.theme.Call2RemindTheme
 import app.call2remind.ui.theme.DarkColors
 import app.call2remind.ui.theme.LightColors
+import app.call2remind.ui.theme.preloadFonts
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -39,6 +42,7 @@ class MainActivity : ComponentActivity() {
         // Paint the ground before the first frame so there is no white flash (in either theme).
         val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         window.setBackgroundDrawable(ColorDrawable((if (night) DarkColors else LightColors).ground.toArgb()))
+        lifecycleScope.launch { preloadFonts(applicationContext) }
         setContent {
             Call2RemindTheme {
                 val start by appViewModel.start.collectAsStateWithLifecycle()

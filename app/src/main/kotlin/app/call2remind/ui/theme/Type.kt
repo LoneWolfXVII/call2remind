@@ -2,6 +2,8 @@
 
 package app.call2remind.ui.theme
 
+import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.ExperimentalTextApi
@@ -11,6 +13,7 @@ import androidx.compose.ui.text.font.DeviceFontFamilyName
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.createFontFamilyResolver
 import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.text.googlefonts.Font
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -18,6 +21,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.call2remind.R
+import kotlinx.coroutines.CancellationException
 
 private val provider = GoogleFont.Provider(
     providerAuthority = "com.google.android.gms.fonts",
@@ -47,6 +51,24 @@ val SchibstedGrotesk: FontFamily = downloadable("Schibsted Grotesk", uiWeights, 
 
 /** JetBrains Mono: times and counters only (tabular by design). */
 val JetBrainsMono: FontFamily = downloadable("JetBrains Mono", monoWeights, "monospace")
+
+/**
+ * Warms the (process-wide) downloadable font cache so the first frames already use the brand
+ * faces instead of swapping from the fallback. Failures (no Play services, before first unlock)
+ * are fine: text keeps the device fallback.
+ */
+suspend fun preloadFonts(context: Context) {
+    val resolver = createFontFamilyResolver(context)
+    for (family in listOf(SchibstedGrotesk, JetBrainsMono)) {
+        try {
+            resolver.preload(family)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.d("C2RFonts", "Font preload failed; using fallback", e)
+        }
+    }
+}
 
 private val tightLines = LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.Both)
 private val noPadding = PlatformTextStyle(includeFontPadding = false)
