@@ -10,6 +10,8 @@ import app.call2remind.ringing.RingNotifications
 import app.call2remind.scheduling.ReplanReason
 import app.call2remind.scheduling.SchedulingEngine
 import app.call2remind.settings.SettingsRepository
+import app.call2remind.sync.CalendarChangeObserver
+import app.call2remind.sync.SyncScheduler
 import app.call2remind.work.BackgroundJobs
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -22,7 +24,8 @@ import javax.inject.Inject
 /**
  * On every process start: replan + recovery + re-arm (idempotent), schedule the watchdog / daily replan
  * (only once the user is unlocked — WorkManager lives in credential-protected storage), and
- * replan whenever the per-source default times change.
+ * replan whenever the per-source default times change. Once unlocked, also the periodic source syncs
+ * and the calendar change observer.
  */
 @HiltAndroidApp
 class Call2RemindApp : Application(), Configuration.Provider {
@@ -37,6 +40,10 @@ class Call2RemindApp : Application(), Configuration.Provider {
     @Inject lateinit var foregroundTracker: AppForegroundTracker
 
     @Inject lateinit var notifications: RingNotifications
+
+    @Inject lateinit var syncScheduler: SyncScheduler
+
+    @Inject lateinit var calendarObserver: CalendarChangeObserver
 
     @Inject @ApplicationScope
     lateinit var scope: CoroutineScope
@@ -56,6 +63,10 @@ class Call2RemindApp : Application(), Configuration.Provider {
                 .drop(1)
                 .collect { engine.replan(ReplanReason.SETTINGS_CHANGED) }
         }
-        if (UserManagerCompat.isUserUnlocked(this)) jobs.ensureScheduled()
+        if (UserManagerCompat.isUserUnlocked(this)) {
+            jobs.ensureScheduled()
+            syncScheduler.ensurePeriodic()
+            calendarObserver.ensureRegistered()
+        }
     }
 }

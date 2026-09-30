@@ -26,4 +26,6 @@
     <string name="action_decline">Decline</string>
     <string name="action_snooze">Snooze</string>
     <string name="action_done">Done</string>
+
+    <string name="samsung_listener_label">Call2Remind: Samsung Reminders as calls</string>
 </resources>

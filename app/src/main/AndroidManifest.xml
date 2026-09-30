@@ -87,6 +87,31 @@
             android:directBootAware="true"
             android:exported="false" />
 
+        <!-- Backup calendar sync trigger: the provider broadcasts EVENT_REMINDER when an event's
+             own reminder fires (exempt from implicit-broadcast limits). -->
+        <receiver
+            android:name=".sync.EventReminderReceiver"
+            android:exported="true"
+            tools:ignore="ExportedReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.EVENT_REMINDER" />
+                <data
+                    android:host="com.android.calendar"
+                    android:scheme="content" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Opt-in Samsung Reminders capture: only active once the user grants notification access. -->
+        <service
+            android:name=".sources.samsung.SamsungReminderListener"
+            android:exported="true"
+            android:label="@string/samsung_listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- WorkManager is initialized on demand with the Hilt worker factory
              (Call2RemindApp implements Configuration.Provider). -->
         <provider
