@@ -66,6 +66,9 @@ object CallTags {
     const val TRACK = "call_track"
     const val SOCKET = "call_socket"
     const val SNOOZE_SHEET = "call_snooze_sheet"
+    const val SNOOZE_CONFIRM = "call_snooze_confirm"
+
+    fun snoozeChip(index: Int) = "call_snooze_chip_$index"
 }
 
 /**

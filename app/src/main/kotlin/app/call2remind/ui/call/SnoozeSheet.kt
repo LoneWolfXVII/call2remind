@@ -37,6 +37,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -145,7 +146,9 @@ fun SnoozeSheetContent(
                                 if (selected != index) haptics.perform(Haptic.SegmentTick)
                                 selected = index
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag(CallTags.snoozeChip(index)),
                         )
                     }
                 }
@@ -177,7 +180,9 @@ fun SnoozeSheetContent(
                     haptics.perform(Haptic.Confirm)
                     onSnooze(Duration.ofMinutes(minutes))
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(CallTags.SNOOZE_CONFIRM),
                 style = PillStyle.Primary,
                 height = 60.dp,
             )

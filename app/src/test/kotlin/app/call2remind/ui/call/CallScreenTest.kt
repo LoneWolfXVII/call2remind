@@ -3,6 +3,9 @@ package app.call2remind.ui.call
 import android.content.Context
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -122,8 +125,13 @@ class CallScreenTest {
         rule.onNodeWithText(context.getString(R.string.call_snooze_minutes, 5L)).performTouchInput { longClick() }
         rule.waitForIdle()
         rule.onNodeWithTag(CallTags.SNOOZE_SHEET).assertIsDisplayed()
-        rule.onNodeWithText(context.getString(R.string.snooze_minutes, 15L)).performClick()
-        rule.onNodeWithText(context.getString(R.string.snooze_confirm, 15L)).performClick()
+        rule.onNodeWithTag(CallTags.snoozeChip(0)).assertIsSelected()
+        rule.onNodeWithTag(CallTags.snoozeChip(2)).assertIsNotSelected().performClick()
+        rule.onNodeWithTag(CallTags.SNOOZE_SHEET).assertExists()
+        rule.onNodeWithTag(CallTags.snoozeChip(2)).assertIsSelected()
+        rule.onNodeWithTag(CallTags.SNOOZE_CONFIRM)
+            .assertTextEquals(context.getString(R.string.snooze_confirm, 15L))
+            .performClick()
         rule.waitForIdle()
 
         assertThat(snoozes).containsExactly(Duration.ofMinutes(15))
