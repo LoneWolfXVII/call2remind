@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- UI copy (onboarding, call screen, shell). Backend / notification strings live in strings.xml. -->
+<resources>
+    <string name="action_continue">Continue</string>
+    <string name="cd_back">Back</string>
+
+    <!-- Sources -->
+    <string name="source_calendar">Google Calendar</string>
+    <string name="source_google_tasks">Google Tasks</string>
+    <string name="source_samsung">Samsung Reminders</string>
+    <string name="source_ms_todo">Microsoft To Do</string>
+    <string name="source_habit">Habit</string>
+    <string name="source_birthday">Birthdays</string>
+    <string name="source_with_detail">%1$s, %2$s</string>
+    <string name="app_calendar">Calendar</string>
+    <string name="app_tasks">Tasks</string>
+    <string name="app_reminders">Reminders</string>
+    <string name="app_todo">To Do</string>
+    <string name="app_contacts">Contacts</string>
+
+    <!-- Onboarding: welcome -->
+    <string name="onboarding_step">Step %1$d of %2$d</string>
+    <string name="welcome_demo_status">Incoming reminder</string>
+    <string name="welcome_demo_title">Team standup</string>
+    <string name="welcome_demo_cd">Example of a reminder call: %1$s at %2$s</string>
+    <string name="welcome_headline">Reminders that call you.</string>
+    <string name="welcome_body">Your phone rings, a voice reads the reminder, you answer or snooze. It picks up what\'s already in your calendar, tasks and contacts, so there is nothing to re-type.</string>
+    <string name="welcome_cta">Get started</string>
+    <string name="welcome_sources">Works with Google, Samsung and Outlook calendars, Google Tasks and contact birthdays.</string>
+
+    <!-- Onboarding: permissions -->
+    <string name="permissions_headline">Let it ring through</string>
+    <string name="permissions_body">Android needs your OK before an app can ring over the lock screen on time.</string>
+    <string name="permissions_summary">%1$d of %2$d allowed. You can change these later in Settings.</string>
+    <string name="setup_allow">Allow</string>
+    <string name="setup_allowed">Allowed</string>
+    <string name="setup_blocked">Turned off. Allow opens Settings to turn it on.</string>
+    <string name="setup_notifications">Notifications</string>
+    <string name="setup_notifications_why">So a reminder can ring at all</string>
+    <string name="setup_full_screen">Full-screen calls</string>
+    <string name="setup_full_screen_why">Ring over the lock screen like a call</string>
+    <string name="setup_exact_alarms">Alarms &amp; reminders</string>
+    <string name="setup_exact_alarms_why">Ring at 9:30, not somewhere near it</string>
+    <string name="setup_calendar">Calendar</string>
+    <string name="setup_calendar_why">Read events from every calendar on the phone</string>
+    <string name="setup_contacts">Contacts</string>
+    <string name="setup_contacts_why">Find birthdays saved in contacts</string>
+
+    <!-- Onboarding: battery -->
+    <string name="battery_headline">Keep calls on time</string>
+    <string name="battery_body">Battery saver can hold alarms back. Let Call2Remind run in the background so calls ring on the minute.</string>
+    <string name="battery_samsung_headline">Stop Samsung from putting it to sleep</string>
+    <string name="battery_samsung_body">Galaxy phones pause apps they think are idle. A paused app can\'t ring. Add Call2Remind to Never sleeping apps.</string>
+    <string name="battery_row_title">Background use</string>
+    <string name="battery_row_why">Battery saver can\'t delay a call</string>
+    <string name="battery_allow">Allow background use</string>
+    <string name="battery_not_now">Not now</string>
+    <string name="battery_open_settings">Open battery settings</string>
+    <string name="battery_done">I\'ve done this</string>
+    <string name="battery_never_sleeping">Never sleeping apps</string>
+    <string name="battery_step1">Open Battery settings</string>
+    <string name="battery_step1_hint">The button below takes you there</string>
+    <string name="battery_step2">Tap Background usage limits</string>
+    <string name="battery_step2_hint">Near the bottom of the page</string>
+    <string name="battery_step3">Tap Never sleeping apps, then +</string>
+    <string name="battery_step3_hint">Pick Call2Remind and tap Add</string>
+
+    <!-- Onboarding: self-test -->
+    <string name="selftest_reminder_title">Test call</string>
+    <string name="selftest_idle_headline">Try it with a real call</string>
+    <string name="selftest_idle_body">We\'ll call you in one minute, exactly like a real reminder. Lock the phone to see it ring over the lock screen.</string>
+    <string name="selftest_start">Ring me in 1 minute</string>
+    <string name="selftest_scheduled_headline">Test call on its way. Lock your phone now.</string>
+    <string name="selftest_rings_at">Rings at %1$s</string>
+    <string name="selftest_countdown_cd">%1$s until the test call</string>
+    <string name="selftest_lock_hint">Press the power button and put the phone down. Don\'t open the app.</string>
+    <string name="selftest_expect_title">If it works, you\'ll see and hear</string>
+    <string name="selftest_expect_1">A full-screen call over the lock screen</string>
+    <string name="selftest_expect_2">The ringtone, even with the app closed</string>
+    <string name="selftest_expect_3">A voice reading \"Test call\" after you answer</string>
+    <string name="selftest_cancel">Cancel test</string>
+    <string name="selftest_skip">Skip, finish setup</string>
+    <string name="selftest_rang_headline">It rang. You\'re set.</string>
+    <string name="selftest_rang_body">Reminders from your calendar, tasks and contacts will call you just like that.</string>
+    <string name="selftest_finish">Finish setup</string>
+    <string name="selftest_didnt_ring">It didn\'t ring</string>
+    <string name="selftest_late_headline">The test call didn\'t ring</string>
+    <string name="selftest_late_body">The phone held the alarm back. Check that every permission is allowed and the app may run in the background, then try again.</string>
+    <string name="selftest_review">Review permissions</string>
+    <string name="selftest_finish_anyway">Finish anyway</string>
+
+    <!-- Call screen -->
+    <string name="call_slide_to_answer">Slide to answer</string>
+    <string name="call_snooze_minutes">Snooze %1$d min</string>
+    <string name="call_snooze_choose">Choose snooze time</string>
+    <string name="call_snooze_hold_hint">Hold for 10 min or a custom time</string>
+    <string name="call_decline_to_missed">No ring-backs left. Declining moves it to Missed.</string>
+    <string name="call_ringback">Ring-back %1$d of %2$d</string>
+    <string name="call_reading_aloud">Reading aloud</string>
+    <string name="call_voice_off">Voice off</string>
+    <string name="call_open_in">Open in %1$s</string>
+    <string name="call_read_again">Read it again</string>
+    <string name="call_stop_voice">Stop voice</string>
+    <string name="call_banner_now">Call2Remind, now</string>
+    <string name="call_banner_pane">Reminder calling: %1$s</string>
+
+    <!-- Snooze sheet -->
+    <string name="snooze_pane">Snooze</string>
+    <string name="snooze_title">Ring again in</string>
+    <string name="snooze_minutes">%1$d min</string>
+    <string name="snooze_custom">Custom</string>
+    <string name="snooze_pick">Pick a time</string>
+    <string name="snooze_less">5 minutes less</string>
+    <string name="snooze_more">5 minutes more</string>
+    <string name="snooze_confirm">Snooze %1$d min</string>
+    <string name="snooze_back_to_call">Back to call</string>
+    <plurals name="snooze_ringbacks_left">
+        <item quantity="one">%1$d of %2$d ring-backs left.</item>
+        <item quantity="other">%1$d of %2$d ring-backs left.</item>
+    </plurals>
+    <string name="snooze_ringbacks_then_missed">After the last one it moves to Missed.</string>
+    <string name="snooze_none_title">No ring-backs left</string>
+    <string name="snooze_none_body">This reminder can\'t be snoozed again. Answer it, or decline and it moves to Missed.</string>
+
+    <!-- Shell -->
+    <string name="tab_up_next">Up next</string>
+    <string name="tab_sources">Sources</string>
+    <string name="tab_history">History</string>
+    <string name="tab_settings">Settings</string>
+    <string name="home_placeholder_body">Your calendar, tasks and birthdays will line up here.</string>
+</resources>
