@@ -1,7 +1,6 @@
 package app.call2remind.ui.call
 
 import android.content.Context
-import androidx.compose.foundation.gestures.draggable
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
@@ -214,28 +213,6 @@ class CallScreenTest {
         rule.onNodeWithTag(CallTags.SNOOZE_CONFIRM).assertTextEquals(context.getString(R.string.snooze_confirm, 10L)).performClick()
 
         assertThat(snoozes).containsExactly(Duration.ofMinutes(10))
-    }
-
-    /** Probe (temporary): does a draggable parent swallow the chips' taps? */
-    @Test
-    fun probeDraggableParent() {
-        rule.setContent {
-            Call2RemindTheme(darkTheme = false, reduceMotion = false) {
-                androidx.compose.foundation.layout.Box(
-                    androidx.compose.ui.Modifier.draggable(
-                        orientation = androidx.compose.foundation.gestures.Orientation.Vertical,
-                        state = androidx.compose.foundation.gestures.rememberDraggableState { },
-                    ),
-                ) {
-                    SnoozeSheetContent(presentation = CallPresentation(), answered = true, now = at, onSnooze = { snoozes += it }, onBack = {})
-                }
-            }
-        }
-        rule.onNodeWithTag(CallTags.snoozeChip(1)).performClick()
-        rule.waitForIdle()
-        val selected = rule.onNodeWithTag(CallTags.snoozeChip(1)).fetchSemanticsNode().config
-            .getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Selected) { false }
-        com.google.common.truth.Truth.assertWithMessage("PROBE draggable parent: tap selected=$selected").that(selected).isTrue()
     }
 
     @Test
