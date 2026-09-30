@@ -45,9 +45,9 @@ class AndroidAlarmSchedulerTest {
         scheduler.arm(first, T0, isSoonest = true)
 
         val alarm = requireNotNull(alarmFor(first))
-        assertThat(alarm.alarmClockInfo).isNotNull()
-        assertThat(alarm.alarmClockInfo.triggerTime).isEqualTo(T0.toEpochMilli())
-        assertThat(alarm.alarmClockInfo.showIntent).isNotNull()
+        val clockInfo = requireNotNull(alarm.alarmClockInfo)
+        assertThat(clockInfo.triggerTime).isEqualTo(T0.toEpochMilli())
+        assertThat(clockInfo.showIntent).isNotNull()
         assertThat(alarm.type).isEqualTo(AlarmManager.RTC_WAKEUP)
         assertThat(alarm.triggerAtMs).isEqualTo(T0.toEpochMilli())
     }
