@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.room)
 }
 
 android {
@@ -59,8 +60,10 @@ kotlin {
     jvmToolchain(17)
 }
 
-ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
+// Room Gradle plugin: exports the schema to app/schemas (committed; needed for future migrations
+// and migration tests) with proper task inputs/outputs, so build-cache hits still write it.
+room {
+    schemaDirectory("$projectDir/schemas")
 }
 
 dependencies {
