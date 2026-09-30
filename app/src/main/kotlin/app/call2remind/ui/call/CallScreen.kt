@@ -570,8 +570,9 @@ private fun BoxScope.SheetHost(open: Boolean, onDismiss: () -> Unit, label: Stri
                 .fillMaxWidth()
                 .onSizeChanged { height = it.height }
                 .offset { IntOffset(0, (hidden.value * height).roundToInt()) }
-                .clip(C2RTheme.shapes.sheet)
-                .background(c.surface)
+                // Shape drawn, not clipped: nothing overflows, and a clip layer with top-only
+                // corners would need path-based hit testing for every touch on the sheet.
+                .background(c.surface, C2RTheme.shapes.sheet)
                 .semantics { paneTitle = label }
                 .testTag(CallTags.SNOOZE_SHEET)
                 .pointerInput(Unit) {

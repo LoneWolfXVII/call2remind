@@ -126,23 +126,8 @@ class CallScreenTest {
         rule.waitForIdle()
         rule.onNodeWithTag(CallTags.SNOOZE_SHEET).assertIsDisplayed()
         rule.onNodeWithTag(CallTags.snoozeChip(0)).assertIsSelected()
-        val sheet = rule.onNodeWithTag(CallTags.SNOOZE_SHEET).fetchSemanticsNode().boundsInRoot
-        val chip = rule.onNodeWithTag(CallTags.snoozeChip(2)).fetchSemanticsNode().boundsInRoot
-        rule.onNodeWithTag(CallTags.snoozeChip(2)).performClick()
-        rule.waitForIdle()
-        val touched = rule.onNodeWithTag(CallTags.snoozeChip(2)).fetchSemanticsNode().config
-            .getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Selected) { false }
-        val declinesAfterTouch = declines
-        if (!touched) {
-            rule.onNodeWithTag(CallTags.snoozeChip(2)).performSemanticsAction(SemanticsActions.OnClick)
-            rule.waitForIdle()
-        }
-        val bySemantics = rule.onNodeWithTag(CallTags.snoozeChip(2)).fetchSemanticsNode().config
-            .getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Selected) { false }
-        com.google.common.truth.Truth.assertWithMessage(
-            "touch=$touched semantics=$bySemantics declines=$declinesAfterTouch snoozes=$snoozes sheet=$sheet chip=$chip",
-        ).that(touched).isTrue()
-
+        rule.onNodeWithTag(CallTags.snoozeChip(2)).assertIsNotSelected().performClick()
+        rule.onNodeWithTag(CallTags.snoozeChip(2)).assertIsSelected()
         rule.onNodeWithTag(CallTags.SNOOZE_CONFIRM)
             .assertTextEquals(context.getString(R.string.snooze_confirm, 15L))
             .performClick()
