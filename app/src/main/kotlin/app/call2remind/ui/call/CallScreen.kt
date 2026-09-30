@@ -8,9 +8,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -40,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,6 +54,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -552,6 +553,7 @@ private fun BoxScope.SheetHost(open: Boolean, onDismiss: () -> Unit, label: Stri
     val visible by remember { derivedStateOf { hidden.value < 1f } }
     if (!open && !visible) return
     val flingPx = with(density) { 1_200.dp.toPx() }
+    val currentDismiss by rememberUpdatedState(onDismiss)
 
     // Tap-to-dismiss area above the sheet; it never overlaps the sheet, so taps on the sheet's
     // own controls cannot fall through to it.
@@ -572,19 +574,28 @@ private fun BoxScope.SheetHost(open: Boolean, onDismiss: () -> Unit, label: Stri
                 .background(c.surface)
                 .semantics { paneTitle = label }
                 .testTag(CallTags.SNOOZE_SHEET)
-                .draggable(
-                    orientation = Orientation.Vertical,
-                    state = rememberDraggableState { delta ->
-                        if (height > 0) scope.launch { hidden.snapTo((hidden.value + delta / height).coerceIn(-0.03f, 1f)) }
-                    },
-                    onDragStopped = { velocity ->
-                        if (hidden.value > DISMISS_FRACTION || velocity > flingPx) {
-                            onDismiss()
-                        } else {
-                            hidden.animateTo(0f, motion.default(0.0005f), initialVelocity = if (height > 0) velocity / height else 0f)
-                        }
-                    },
-                )
+                .pointerInput(Unit) {
+                    // Follows a downward drag; taps (no touch slop) pass through to the controls.
+                    val tracker = VelocityTracker()
+                    detectVerticalDragGestures(
+                        onDragStart = { tracker.resetTracking() },
+                        onVerticalDrag = { change, delta ->
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            if (height > 0) scope.launch { hidden.snapTo((hidden.value + delta / height).coerceIn(-0.03f, 1f)) }
+                        },
+                        onDragEnd = {
+                            val velocity = tracker.calculateVelocity().y
+                            if (hidden.value > DISMISS_FRACTION || velocity > flingPx) {
+                                currentDismiss()
+                            } else {
+                                scope.launch {
+                                    hidden.animateTo(0f, motion.default(0.0005f), initialVelocity = if (height > 0) velocity / height else 0f)
+                                }
+                            }
+                        },
+                        onDragCancel = { scope.launch { hidden.animateTo(0f, motion.default(0.0005f)) } },
+                    )
+                }
                 .windowInsetsPadding(WindowInsets.navigationBars),
         ) {
             content()
