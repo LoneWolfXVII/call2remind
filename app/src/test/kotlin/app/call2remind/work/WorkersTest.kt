@@ -113,7 +113,8 @@ class WorkersTest {
 
         assertThat(workManager.getWorkInfosForUniqueWork(WatchdogWorker.UNIQUE_NAME).get().single().id).isEqualTo(watchdog.id)
         assertThat(workManager.getWorkInfosForUniqueWork(DailyReplanWorker.UNIQUE_NAME).get().single().id).isEqualTo(daily.id)
-        assertThat(watchdog.state).isEqualTo(WorkInfo.State.ENQUEUED)
+        // The test WorkManager may already be running the first period (no constraints/delay).
+        assertThat(watchdog.state).isAnyOf(WorkInfo.State.ENQUEUED, WorkInfo.State.RUNNING)
         assertThat(watchdog.periodicityInfo?.repeatIntervalMillis).isEqualTo(TimeUnit.MINUTES.toMillis(15))
         assertThat(daily.periodicityInfo?.repeatIntervalMillis).isEqualTo(TimeUnit.DAYS.toMillis(1))
     }
