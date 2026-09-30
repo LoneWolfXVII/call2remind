@@ -2,61 +2,78 @@ package app.call2remind.ringing
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.call2remind.R
 import app.call2remind.scheduling.AndroidAlarmScheduler
+import app.call2remind.ui.call.CallActions
+import app.call2remind.ui.call.CallPresentationViewModel
+import app.call2remind.ui.call.CallScreen
+import app.call2remind.ui.system.SystemIntents
+import app.call2remind.ui.theme.Call2RemindTheme
+import app.call2remind.ui.theme.LightColors
 import dagger.hilt.android.AndroidEntryPoint
 
 /**
- * Full-screen incoming call (shown over the lock screen, turns the screen on). Placeholder UI:
- * Answer / Decline while ringing, Snooze / Done once answered. The design pass restyles it.
+ * Full-screen incoming call (shown over the lock screen, turns the screen on): the plug-into-socket
+ * answer, the answered call with the voice transcript, and the snooze sheet ([CallScreen]).
+ *
+ * [IncomingCallViewModel] owns the call's state transitions; [CallPresentationViewModel] adds what
+ * only the screen needs (snooze allowance, transcript, voice controls).
  */
 @AndroidEntryPoint
 class IncomingCallActivity : ComponentActivity() {
     private val viewModel: IncomingCallViewModel by viewModels()
+    private val presentationViewModel: CallPresentationViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val panel = LightColors.panel.toArgb()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
+        // Without an occurrence there is nothing to show (and nothing would ever finish the screen).
+        if (intent?.getStringExtra(EXTRA_OCCURRENCE_ID) == null) {
+            finish()
+            return
+        }
+        window.setBackgroundDrawable(ColorDrawable(panel))
         showOverLockScreen()
         if (savedInstanceState == null) handleAnswer(intent)
         setContent {
-            MaterialTheme {
+            Call2RemindTheme {
                 val state by viewModel.state.collectAsStateWithLifecycle()
+                val presentation by presentationViewModel.presentation.collectAsStateWithLifecycle()
+                val speech by presentationViewModel.speech.collectAsStateWithLifecycle()
                 LaunchedEffect(state.finished) { if (state.finished) finish() }
-                IncomingCallScreen(
-                    state = state,
-                    onAnswer = viewModel::answer,
-                    onDecline = viewModel::decline,
-                    onSnooze = { viewModel.snooze() },
-                    onDone = viewModel::done,
-                )
+                val sourceIntents = remember(state.sourceType, presentation.plannedAt, state.fireAt) {
+                    state.sourceType?.let { SystemIntents.openSource(it, presentation.plannedAt ?: state.fireAt) }.orEmpty()
+                }
+                val actions = remember(sourceIntents) {
+                    CallActions(
+                        onAnswer = viewModel::answer,
+                        onDecline = viewModel::decline,
+                        onSnooze = { viewModel.snooze(it) },
+                        onDone = viewModel::done,
+                        onOpenSource = if (sourceIntents.isEmpty()) null else ({ openSource(sourceIntents) }),
+                        onReadAgain = presentationViewModel::readAgain,
+                        onStopVoice = presentationViewModel::stopVoice,
+                    )
+                }
+                CallScreen(state = state, presentation = presentation, speech = speech, actions = actions)
             }
         }
     }
@@ -64,8 +81,15 @@ class IncomingCallActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.getStringExtra(EXTRA_OCCURRENCE_ID)?.let(viewModel::bind)
+        intent.getStringExtra(EXTRA_OCCURRENCE_ID)?.let { id ->
+            viewModel.bind(id)
+            presentationViewModel.bind(id)
+        }
         handleAnswer(intent)
+    }
+
+    private fun openSource(intents: List<Intent>) {
+        SystemIntents.launchFirst(this, intents)
     }
 
     private fun handleAnswer(intent: Intent?) {
@@ -94,49 +118,5 @@ class IncomingCallActivity : ComponentActivity() {
                 .setData(AndroidAlarmScheduler.occurrenceUri(occurrenceId))
                 .putExtra(EXTRA_OCCURRENCE_ID, occurrenceId)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
-    }
-}
-
-@Composable
-private fun IncomingCallScreen(
-    state: CallUiState,
-    onAnswer: () -> Unit,
-    onDecline: () -> Unit,
-    onSnooze: () -> Unit,
-    onDone: () -> Unit,
-) {
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(32.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(48.dp))
-                Text(
-                    text = stringResource(if (state.answered) R.string.call_in_progress else R.string.call_incoming),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = state.title.ifBlank { stringResource(R.string.reminder_fallback_title) },
-                    style = MaterialTheme.typography.headlineMedium,
-                    textAlign = TextAlign.Center,
-                )
-                state.notes?.takeIf { it.isNotBlank() }?.let {
-                    Spacer(Modifier.height(8.dp))
-                    Text(text = it, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-                }
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                if (state.answered) {
-                    OutlinedButton(onClick = onSnooze) { Text(stringResource(R.string.action_snooze)) }
-                    Button(onClick = onDone) { Text(stringResource(R.string.action_done)) }
-                } else {
-                    OutlinedButton(onClick = onDecline) { Text(stringResource(R.string.action_decline)) }
-                    Button(onClick = onAnswer) { Text(stringResource(R.string.action_answer)) }
-                }
-            }
-        }
     }
 }
