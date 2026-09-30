@@ -379,6 +379,7 @@ class SchedulingEngineTest {
 
         // The second alarm fires while the first still "rings" (its service died): line busy.
         clock.now = T0.plus(Duration.ofSeconds(11))
+        h.alarms.fire(queued.id)
         assertThat(engine.claimNext()).isEqualTo(RingStep.LineBusy)
         engine.reconcile()
         assertThat(h.alarms.armed).doesNotContainKey(queued.id)

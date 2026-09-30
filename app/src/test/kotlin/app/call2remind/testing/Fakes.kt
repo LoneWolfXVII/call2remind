@@ -54,6 +54,11 @@ class FakeAlarmScheduler : AlarmScheduler {
         }
     }
 
+    /** The alarm of [occurrenceId] went off: the OS drops a delivered one-shot alarm. */
+    fun fire(occurrenceId: String) {
+        synchronized(lock) { current.remove(occurrenceId) }
+    }
+
     /** Forgets everything (e.g. a reboot wiped the alarms). */
     fun reset() {
         synchronized(lock) {
