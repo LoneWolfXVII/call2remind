@@ -1,4 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Call2Remind</string>
+
+    <string name="channel_calls">Reminder calls</string>
+    <string name="channel_calls_description">Incoming reminder calls</string>
+    <string name="channel_calls_fallback">Reminder calls (fallback)</string>
+    <string name="channel_calls_fallback_description">Used when the ringing screen cannot start</string>
+    <string name="channel_missed">Missed reminders</string>
+    <string name="channel_missed_description">Reminders you did not answer</string>
+    <string name="channel_hints">Tips</string>
+    <string name="channel_hints_description">One-time hints about how calls behave</string>
+
+    <string name="reminder_fallback_title">Reminder</string>
+    <string name="call_incoming">Incoming reminder call</string>
+    <string name="call_in_progress">Reminder call</string>
+    <string name="call_deferred_title">Reminder waiting</string>
+    <string name="call_deferred_text">Will ring when your call ends: %1$s</string>
+    <string name="missed_title">Missed reminder</string>
+    <string name="missed_ring_again">Calling again at %1$s</string>
+    <string name="missed_gave_up">You missed this reminder</string>
+    <string name="dnd_hint_title">Calls are silent in Do Not Disturb</string>
+    <string name="dnd_hint_text">Reminder calls vibrate and show on screen while Do Not Disturb blocks all sound.</string>
+
+    <string name="action_answer">Answer</string>
+    <string name="action_decline">Decline</string>
+    <string name="action_snooze">Snooze</string>
+    <string name="action_done">Done</string>
 </resources>
