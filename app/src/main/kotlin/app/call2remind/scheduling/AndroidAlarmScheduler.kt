@@ -9,6 +9,7 @@ import android.os.Build
 import android.util.Log
 import app.call2remind.MainActivity
 import app.call2remind.core.model.Occurrence
+import app.call2remind.core.planning.RequestCodes
 import app.call2remind.receivers.AlarmReceiver
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
@@ -84,8 +85,11 @@ class AndroidAlarmScheduler @Inject constructor(
                 .setData(occurrenceUri(occurrenceId))
                 .putExtra(AlarmReceiver.EXTRA_OCCURRENCE_ID, occurrenceId)
 
-        /** `call2remind://occurrence/<id>` — makes intents unique per occurrence. */
-        fun occurrenceUri(occurrenceId: String): Uri =
-            Uri.Builder().scheme("call2remind").authority("occurrence").appendPath(occurrenceId).build()
+        /**
+         * `c2r://occ/<id>` ([RequestCodes.dataUri], id percent-encoded) — makes every
+         * occurrence's intents distinct under `Intent.filterEquals`, so PendingIntents never
+         * alias even if two request codes collide.
+         */
+        fun occurrenceUri(occurrenceId: String): Uri = Uri.parse(RequestCodes.dataUri(occurrenceId))
     }
 }

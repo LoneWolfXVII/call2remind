@@ -2,6 +2,7 @@ package app.call2remind.data.repo
 
 import androidx.room.withTransaction
 import app.call2remind.core.log.RingLogEvent
+import app.call2remind.core.log.RingLogType
 import app.call2remind.core.model.Occurrence
 import app.call2remind.core.model.OccurrenceState
 import app.call2remind.core.planning.Plan
@@ -17,7 +18,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Clock
 import java.time.Instant
-import java.time.ZoneOffset
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -155,15 +155,9 @@ class RoomOccurrenceRepository @Inject constructor(
     }
 
     override suspend fun tryClaimRing(id: String, now: Instant): Boolean = db.withTransaction {
-        val current = dao.get(id)?.toModel() ?: return@withTransaction false
-        val pending = current.state == OccurrenceState.SCHEDULED || current.state == OccurrenceState.SNOOZED
-        if (!pending || current.fireAt.isAfter(now)) return@withTransaction false
-        if (dao.countRinging() > 0) return@withTransaction false
-        val machine = OccurrenceStateMachine(Clock.fixed(now, ZoneOffset.UTC))
-        val result = machine.transition(current, OccurrenceEvent.Fire) as? TransitionResult.Transitioned
-            ?: return@withTransaction false
-        if (!writeIfUnchanged(current, result.occurrence)) return@withTransaction false
-        logDao.insert(result.logEvent.toEntity())
+        // One conditional UPDATE is the lock; the FIRED log entry commits with it or not at all.
+        if (dao.claimRing(id, now) != 1) return@withTransaction false
+        logDao.insert(RingLogEvent(id, RingLogType.FIRED, now).toEntity())
         true
     }
 

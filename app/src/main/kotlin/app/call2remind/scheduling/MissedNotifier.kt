@@ -9,4 +9,10 @@ interface MissedNotifier {
 
     /** [occurrence] was handled (done / skipped): dismiss any missed notice for it. */
     suspend fun onResolved(occurrence: Occurrence)
+
+    /**
+     * [occurrence] stopped ringing (any transition out of RINGING): dismiss a fallback ringing
+     * notification posted when the ringing service could not start. No-op by default.
+     */
+    suspend fun onRingEnded(occurrence: Occurrence) = Unit
 }

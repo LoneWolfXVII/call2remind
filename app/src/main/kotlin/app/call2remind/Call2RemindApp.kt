@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * On every process start: replan + re-arm (idempotent), schedule the watchdog / daily replan
+ * On every process start: replan + recovery + re-arm (idempotent), schedule the watchdog / daily replan
  * (only once the user is unlocked — WorkManager lives in credential-protected storage), and
  * replan whenever the per-source default times change.
  */
@@ -48,7 +48,7 @@ class Call2RemindApp : Application(), Configuration.Provider {
         super.onCreate()
         foregroundTracker.register(this)
         notifications.ensureChannels()
-        scope.launch { engine.replan(ReplanReason.APP_START) }
+        scope.launch { engine.onAppStart() }
         scope.launch {
             settings.settings
                 .map { it.defaultTimes }

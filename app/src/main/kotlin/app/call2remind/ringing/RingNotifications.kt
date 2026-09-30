@@ -180,6 +180,9 @@ class RingNotifications @Inject constructor(
 
     fun missedId(occurrence: Occurrence): Int = occurrence.requestCode
 
+    /** Id (with [TAG_FALLBACK]) of the ringing notification posted when the service cannot start. */
+    fun fallbackId(occurrence: Occurrence): Int = occurrence.requestCode
+
     private fun canPost(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
@@ -218,6 +221,7 @@ class RingNotifications @Inject constructor(
         const val RING_NOTIFICATION_ID = 1001
         const val DND_HINT_ID = 1002
         const val TAG_MISSED = "missed"
+        const val TAG_FALLBACK = "fallback"
 
         private const val REQUEST_SHOW = 1
         private const val REQUEST_ANSWER = 2

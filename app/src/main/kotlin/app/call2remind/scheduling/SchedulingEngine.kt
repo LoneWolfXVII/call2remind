@@ -98,7 +98,8 @@ class SchedulingEngine @Inject constructor(
         } else {
             null
         }
-        plan.toCancel.forEach { alarms.cancel(it.occurrence) }
+        // Only rows really deleted: one that started ringing meanwhile keeps its (already cancelled) alarm.
+        applied?.deleted?.forEach { alarms.cancel(it) }
         val armed = reconcileLocked(now, armOverdue = false)
         ReplanResult(
             reason = reason,
@@ -142,7 +143,9 @@ class SchedulingEngine @Inject constructor(
         if (result is TransitionResult.Transitioned) {
             val occurrence = result.occurrence
             val needsAlarm = occurrence.state == OccurrenceState.SCHEDULED || occurrence.state == OccurrenceState.SNOOZED
-            if (!needsAlarm) alarms.cancel(occurrence)
+            if (result.from == OccurrenceState.RINGING && occurrence.state != OccurrenceState.RINGING) {
+                missedNotifier.onRingEnded(occurrence)
+            }
             when {
                 occurrence.state == OccurrenceState.MISSED || event == OccurrenceEvent.RingTimeout ->
                     missedNotifier.onMissed(occurrence)
@@ -150,7 +153,12 @@ class SchedulingEngine @Inject constructor(
                     missedNotifier.onResolved(occurrence)
                 else -> Unit
             }
-            reconcile()
+            // Cancel + re-arm under the scheduling lock, so a concurrent reconcile that read the
+            // old state cannot re-arm this occurrence's alarm after it was cancelled.
+            mutex.withLock {
+                if (!needsAlarm) alarms.cancel(occurrence)
+                reconcileLocked(clock.instant(), armOverdue = false)
+            }
         }
         return result
     }
@@ -186,6 +194,28 @@ class SchedulingEngine @Inject constructor(
         return actions
     }
 
+    /**
+     * Process start (every cold start, including ones caused by an alarm): replan the window,
+     * then recovery + arm everything, so rings missed while the process was dead (e.g. killed
+     * by the OEM) ring now or are marked missed. Idempotent and safe to race with the alarm
+     * receiver: ringing always goes through the [OccurrenceRepository.tryClaimRing] lock.
+     */
+    suspend fun onAppStart(): ReplanResult {
+        val result = replan(ReplanReason.APP_START)
+        runWatchdog()
+        return result
+    }
+
+    /**
+     * Wall clock or time zone changed: wall-clock schedules resolve to new instants (replan) and
+     * rings the jump made overdue are recovered (ring if < 2 h late, else missed).
+     */
+    suspend fun onTimeChanged(): ReplanResult {
+        val result = replan(ReplanReason.TIME_CHANGE)
+        runWatchdog()
+        return result
+    }
+
     /** Periodic watchdog: recovery, then arm everything (overdue → immediate alarm). */
     suspend fun runWatchdog(): List<RecoveryAction> {
         val actions = recover()
@@ -218,7 +248,7 @@ class SchedulingEngine @Inject constructor(
         }
         for (candidate in due) {
             if (occurrences.tryClaimRing(candidate.id, now)) {
-                alarms.cancel(candidate)
+                mutex.withLock { alarms.cancel(candidate) }
                 val claimed = occurrences.get(candidate.id) ?: continue
                 return RingStep.Ring(claimed)
             }

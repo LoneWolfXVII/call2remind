@@ -126,6 +126,24 @@ interface OccurrenceDao {
         expectedAnsweredAt: Instant?,
     ): Int
 
+    /**
+     * The exactly-once ring lock as ONE conditional UPDATE: moves occurrence [id] from
+     * SCHEDULED/SNOOZED to RINGING (fireAt = [now], unanswered; same as the state machine's
+     * `Fire`) only if it is due (`fireAt <= now`) and no occurrence is RINGING (one line).
+     * Returns the number of rows changed: 1 for exactly one caller, 0 for everybody else.
+     */
+    @Query(
+        """
+        UPDATE occurrences
+        SET state = 'RINGING', fireAt = :now, answeredAt = NULL
+        WHERE id = :id
+          AND state IN ('SCHEDULED', 'SNOOZED')
+          AND fireAt <= :now
+          AND NOT EXISTS (SELECT 1 FROM occurrences WHERE state = 'RINGING')
+        """,
+    )
+    suspend fun claimRing(id: String, now: Instant): Int
+
     @Query("DELETE FROM occurrences WHERE id IN (:ids) AND state IN ('SCHEDULED', 'SNOOZED')")
     suspend fun deletePending(ids: List<String>): Int
 

@@ -133,9 +133,6 @@ abstract class RepositoryModule {
 
     @Binds
     abstract fun ringLauncher(impl: AndroidRingLauncher): RingLauncher
-
-    @Binds
-    abstract fun backgroundJobs(impl: WorkManagerBackgroundJobs): BackgroundJobs
 }
 
 /** Android system-facing bindings; tests replace this module with fakes. */
@@ -156,4 +153,7 @@ abstract class SystemModule {
 
     @Binds
     abstract fun ttsPlayer(impl: AndroidTtsPlayer): TtsPlayer
+
+    @Binds
+    abstract fun backgroundJobs(impl: WorkManagerBackgroundJobs): BackgroundJobs
 }

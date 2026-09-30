@@ -7,11 +7,13 @@ import app.call2remind.R
 import app.call2remind.core.log.RingLogEvent
 import app.call2remind.core.log.RingLogType
 import app.call2remind.core.model.Occurrence
+import app.call2remind.core.ringing.RecoveryPolicy
 import app.call2remind.core.ringing.RingMode
 import app.call2remind.data.repo.OccurrenceRepository
 import app.call2remind.data.repo.ReminderRepository
 import app.call2remind.scheduling.AlarmScheduler
 import app.call2remind.scheduling.MissedNotifier
+import app.call2remind.settings.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Clock
 import java.time.Duration
@@ -34,6 +36,7 @@ class AndroidRingLauncher @Inject constructor(
     private val occurrences: OccurrenceRepository,
     private val notifications: RingNotifications,
     private val alarms: AlarmScheduler,
+    private val settings: SettingsRepository,
     private val clock: Clock,
 ) : RingLauncher {
 
@@ -47,10 +50,19 @@ class AndroidRingLauncher @Inject constructor(
             Log.w(TAG, "Cannot start ringing service", e)
             notifications.ensureChannels()
             notifications.notify(
-                RingNotifications.RING_NOTIFICATION_ID,
+                notifications.fallbackId(occurrence),
                 notifications.incomingCall(occurrence.id, title, RingMode.FULL_SCREEN, fallback = true),
+                RingNotifications.TAG_FALLBACK,
             )
-            occurrences.appendLog(RingLogEvent(occurrence.id, RingLogType.FAILED, clock.instant(), REASON_FGS_REFUSED))
+            val now = clock.instant()
+            occurrences.appendLog(RingLogEvent(occurrence.id, RingLogType.FAILED, now, REASON_FGS_REFUSED))
+            // No service means no ring timer: an alarm just after the recovery threshold lets the
+            // alarm receiver's recovery time the ring out (auto-snooze) and free the line.
+            val timeoutAt = now
+                .plus(settings.current().snoozePolicy.ringTimeout)
+                .plus(RecoveryPolicy().ringingGrace)
+                .plus(TIMEOUT_SLACK)
+            alarms.arm(occurrence, timeoutAt, isSoonest = false)
         }
     }
 
@@ -76,6 +88,7 @@ class AndroidRingLauncher @Inject constructor(
         const val TAG = "RingLauncher"
         const val REASON_FGS_REFUSED = "fgs_start_not_allowed"
         val DEFER_RECHECK: Duration = Duration.ofMinutes(1)
+        val TIMEOUT_SLACK: Duration = Duration.ofSeconds(1)
     }
 }
 
@@ -96,5 +109,9 @@ class AndroidMissedNotifier @Inject constructor(
 
     override suspend fun onResolved(occurrence: Occurrence) {
         notifications.cancel(notifications.missedId(occurrence), RingNotifications.TAG_MISSED)
+    }
+
+    override suspend fun onRingEnded(occurrence: Occurrence) {
+        notifications.cancel(notifications.fallbackId(occurrence), RingNotifications.TAG_FALLBACK)
     }
 }
