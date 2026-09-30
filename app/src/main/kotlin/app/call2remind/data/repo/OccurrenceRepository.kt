@@ -51,8 +51,9 @@ interface OccurrenceRepository {
     suspend fun getRingLog(occurrenceId: String): List<RingLogEvent>
 
     /**
-     * Applies a planner [Plan] in one transaction: inserts `toCreate` (ignoring ids that already
-     * exist) and DELETES `toCancel` rows that are still SCHEDULED/SNOOZED.
+     * Applies a planner [Plan] in one transaction, in order: DELETES `toCancel` rows that are still
+     * SCHEDULED/SNOOZED, re-points `toUpdate` rows to their new `reminderId`, then inserts
+     * `toCreate` (ignoring ids that already exist).
      */
     suspend fun applyPlan(plan: Plan): AppliedPlan
 
@@ -125,6 +126,7 @@ class RoomOccurrenceRepository @Inject constructor(
             .flatMap { dao.getByIds(it) }
             .filter { it.state == OccurrenceState.SCHEDULED || it.state == OccurrenceState.SNOOZED }
         deleted.map { it.id }.chunked(MAX_SQL_ARGS).forEach { dao.deletePending(it) }
+        plan.toUpdate.forEach { dao.updateReminderId(it.id, it.reminderId) }
 
         val created = if (plan.toCreate.isEmpty()) {
             emptyList()

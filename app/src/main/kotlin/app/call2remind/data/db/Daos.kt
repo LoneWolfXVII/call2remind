@@ -95,6 +95,10 @@ interface OccurrenceDao {
     @Query("SELECT COUNT(*) FROM occurrences WHERE state = 'RINGING'")
     suspend fun countRinging(): Int
 
+    /** Re-points occurrence [id] to reminder [reminderId] (planner `Plan.toUpdate`). */
+    @Query("UPDATE occurrences SET reminderId = :reminderId WHERE id = :id")
+    suspend fun updateReminderId(id: String, reminderId: String): Int
+
     /**
      * Compare-and-set: writes the new values only if the row still has the expected ones.
      * Returns the number of rows changed (0 or 1).

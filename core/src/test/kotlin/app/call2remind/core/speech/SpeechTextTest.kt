@@ -47,6 +47,32 @@ class SpeechTextTest {
     }
 
     @Test
+    fun timeIsSpokenInTheDeviceZoneNotTheReminderZone() {
+        val start = instant("2026-10-01T04:30:00Z")
+        val inKolkata = reminder(title = "Standup", zone = KOLKATA, schedule = Schedule.At(start))
+        val inNewYork = inKolkata.copy(zone = NEW_YORK)
+        val london = ZoneId.of("Europe/London")
+
+        assertThat(speak(inKolkata, start, london)).isEqualTo("Reminder: Standup. 5:30 AM.")
+        assertThat(speak(inNewYork, start, london)).isEqualTo("Reminder: Standup. 5:30 AM.")
+    }
+
+    @Test
+    fun dayLeadAcrossDstGapSpeaksTheEventTime() {
+        val rule = RecurrenceRule(DayOfWeek.entries.toSet(), setOf(time("02:30")), date("2026-01-01"))
+        val r = reminder(
+            title = "Night shift",
+            zone = NEW_YORK,
+            sourceType = SourceType.HABIT,
+            schedule = Schedule.Recurring(rule, LeadOffset.days(1)),
+        )
+        // The ring for the Mar 9 02:30 event: one day earlier lands in the Mar 8 DST gap → 03:30 EDT.
+        val planned = at("2026-03-08T03:30", -4)
+
+        assertThat(speak(r, planned, NEW_YORK)).isEqualTo("Reminder: Night shift. 2:30 AM.")
+    }
+
+    @Test
     fun recurringHabitUsesPlannedTimeEvenWhenSnoozed() {
         val rule = RecurrenceRule(DayOfWeek.entries.toSet(), setOf(time("07:30")), date("2026-01-01"))
         val r = reminder(title = "Meds", schedule = Schedule.Recurring(rule), sourceType = SourceType.HABIT)

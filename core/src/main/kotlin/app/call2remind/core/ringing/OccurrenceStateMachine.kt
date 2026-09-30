@@ -19,7 +19,7 @@ import java.time.Instant
  *
  * | From                | Event                         | To                                  |
  * |---------------------|-------------------------------|-------------------------------------|
- * | SCHEDULED, SNOOZED  | Fire                          | RINGING (fireAt = now, unanswered)  |
+ * | SCHEDULED, SNOOZED, due \*\* | Fire                  | RINGING (fireAt = now, unanswered)  |
  * | RINGING unanswered  | Answer                        | RINGING (answeredAt = now)          |
  * | RINGING             | Snooze(d), Decline            | SNOOZED at now + d, or MISSED \*    |
  * | RINGING unanswered  | RingTimeout                   | SNOOZED at now + default, or MISSED \* |
@@ -27,7 +27,12 @@ import java.time.Instant
  * | SCHEDULED, SNOOZED, RINGING | Skip                  | SKIPPED                             |
  * | SCHEDULED, SNOOZED, RINGING | MarkMissed            | MISSED                              |
  *
- * \* MISSED when `ringBacks` has already reached [SnoozePolicy.maxRingBacks].
+ * \* MISSED when `ringBacks` has already reached [SnoozePolicy.maxRingBacks], except for an
+ * explicit Snooze after answering, which is never capped (see [SnoozePolicy.canSnooze]).
+ *
+ * \*\* Due means `fireAt <= now + ` [FIRE_TOLERANCE]; firing earlier is invalid (a stale or
+ * mis-set alarm must not ring an occurrence ahead of time).
+ *
  * Anything else is an [TransitionResult.InvalidTransition]. "Now" comes from [clock].
  */
 class OccurrenceStateMachine(
@@ -46,17 +51,23 @@ class OccurrenceStateMachine(
 
         return when (event) {
             OccurrenceEvent.Fire ->
-                if (pending) {
-                    accept(occurrence.copy(state = RINGING, fireAt = now, answeredAt = null), RingLogType.FIRED, now)
+                if (pending && !occurrence.fireAt.isAfter(now.plus(FIRE_TOLERANCE))) {
+                    val started = occurrence.copy(state = RINGING, fireAt = now, answeredAt = null)
+                    accept(state, started, RingLogType.FIRED, now)
                 } else {
                     invalid
                 }
 
             OccurrenceEvent.Answer ->
-                if (unanswered) accept(occurrence.copy(answeredAt = now), RingLogType.ANSWERED, now) else invalid
+                if (unanswered) accept(state, occurrence.copy(answeredAt = now), RingLogType.ANSWERED, now) else invalid
 
             is OccurrenceEvent.Snooze ->
-                if (ringing) snooze(occurrence, event.duration, now, RingLogEvent.REASON_USER_SNOOZE) else invalid
+                if (ringing) {
+                    val capped = occurrence.answeredAt == null
+                    snooze(occurrence, event.duration, now, RingLogEvent.REASON_USER_SNOOZE, capped)
+                } else {
+                    invalid
+                }
 
             OccurrenceEvent.Decline ->
                 if (ringing) snooze(occurrence, policy.defaultSnooze, now, RingLogEvent.REASON_DECLINED) else invalid
@@ -70,31 +81,40 @@ class OccurrenceStateMachine(
 
             OccurrenceEvent.Done ->
                 if (pending || ringing || state == MISSED) {
-                    accept(occurrence.copy(state = DONE, answeredAt = null), RingLogType.DONE, now)
+                    accept(state, occurrence.copy(state = DONE, answeredAt = null), RingLogType.DONE, now)
                 } else {
                     invalid
                 }
 
             OccurrenceEvent.Skip ->
                 if (pending || ringing) {
-                    accept(occurrence.copy(state = SKIPPED, answeredAt = null), RingLogType.SKIPPED, now)
+                    accept(state, occurrence.copy(state = SKIPPED, answeredAt = null), RingLogType.SKIPPED, now)
                 } else {
                     invalid
                 }
 
             OccurrenceEvent.MarkMissed ->
                 if (pending || ringing) {
-                    accept(occurrence.copy(state = MISSED, answeredAt = null), RingLogType.MISSED, now)
+                    accept(state, occurrence.copy(state = MISSED, answeredAt = null), RingLogType.MISSED, now)
                 } else {
                     invalid
                 }
         }
     }
 
-    private fun snooze(occurrence: Occurrence, delay: Duration, now: Instant, reason: String): TransitionResult {
-        if (occurrence.ringBacks >= policy.maxRingBacks) {
+    /** See [SnoozePolicy.canSnooze]. */
+    fun canSnooze(occurrence: Occurrence): Boolean = policy.canSnooze(occurrence)
+
+    private fun snooze(
+        occurrence: Occurrence,
+        delay: Duration,
+        now: Instant,
+        reason: String,
+        capped: Boolean = true,
+    ): TransitionResult {
+        if (capped && !policy.hasRingBacksLeft(occurrence)) {
             val missed = occurrence.copy(state = MISSED, answeredAt = null)
-            return accept(missed, RingLogType.MISSED, now, RingLogEvent.REASON_MAX_RING_BACKS)
+            return accept(occurrence.state, missed, RingLogType.MISSED, now, RingLogEvent.REASON_MAX_RING_BACKS)
         }
         val nextFireAt = now.plus(delay)
         val snoozed = occurrence.copy(
@@ -107,10 +127,12 @@ class OccurrenceStateMachine(
             occurrence = snoozed,
             nextFireAt = nextFireAt,
             logEvent = RingLogEvent(occurrence.id, RingLogType.SNOOZED, now, reason),
+            from = occurrence.state,
         )
     }
 
     private fun accept(
+        from: OccurrenceState,
         updated: Occurrence,
         type: RingLogType,
         now: Instant,
@@ -119,5 +141,11 @@ class OccurrenceStateMachine(
         occurrence = updated,
         nextFireAt = null,
         logEvent = RingLogEvent(updated.id, type, now, reason),
+        from = from,
     )
+
+    companion object {
+        /** How early (clock skew, alarm batching) `Fire` may arrive before `fireAt`. */
+        val FIRE_TOLERANCE: Duration = Duration.ofSeconds(1)
+    }
 }

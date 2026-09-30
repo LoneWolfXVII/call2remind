@@ -53,6 +53,17 @@ class RecoveryPolicyTest {
     }
 
     @Test
+    fun ringingStuckAcrossALongOutageIsMissedNotSnoozed() {
+        val justUnder = occurrence(fireAt = now.minus(Duration.ofHours(2)).plusSeconds(1), state = OccurrenceState.RINGING)
+        val twoHours = occurrence(fireAt = now.minus(Duration.ofHours(2)), state = OccurrenceState.RINGING)
+        val days = occurrence(fireAt = now.minus(Duration.ofDays(2)), state = OccurrenceState.RINGING)
+
+        assertThat(policy.actionFor(justUnder, now)).isEqualTo(RecoveryAction.TimeOutRinging(justUnder))
+        assertThat(policy.actionFor(twoHours, now)).isEqualTo(RecoveryAction.MarkMissed(twoHours, Duration.ofHours(2)))
+        assertThat(policy.actionFor(days, now)).isEqualTo(RecoveryAction.MarkMissed(days, Duration.ofDays(2)))
+    }
+
+    @Test
     fun staleAnsweredCallIsFinished() {
         val fresh = occurrence(fireAt = now.minus(Duration.ofMinutes(20)), state = OccurrenceState.RINGING)
             .copy(answeredAt = now.minus(Duration.ofMinutes(14)))

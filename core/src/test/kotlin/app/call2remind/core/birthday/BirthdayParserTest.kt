@@ -38,11 +38,23 @@ class BirthdayParserTest {
     }
 
     @Test
+    fun dateWithTimePartUsesOnlyTheDate() {
+        val withYear = Birthday(MonthDay.of(5, 17), 1990)
+
+        assertThat(BirthdayParser.parse("1990-05-17T00:00:00.000Z")).isEqualTo(withYear)
+        // No zone conversion: 23:30 at -05:00 is May 18 in UTC, but the date part wins.
+        assertThat(BirthdayParser.parse("1990-05-17T23:30:00-05:00")).isEqualTo(withYear)
+        assertThat(BirthdayParser.parse("1990-05-17 00:00:00")).isEqualTo(withYear)
+        assertThat(BirthdayParser.parse("0000-05-17T00:00:00Z")).isEqualTo(Birthday(MonthDay.of(5, 17), null))
+        assertThat(BirthdayParser.parse("1990-02-30T00:00:00Z")).isNull()
+    }
+
+    @Test
     fun invalidInputsReturnNull() {
         listOf(
             null, "", "   ", "abc", "1990-13-01", "1990-00-10", "1990-04-31", "1990-02-30",
             "--13-01", "--02-30", "--1301", "1990517", "1990/05/17", "90-05-17", "+1990-05-17",
-            "1990-05-17T00:00", "--5-17", "-05-17", "1990-5-17",
+            "1990-05-17X00:00", "1990-05-170", "--5-17", "-05-17", "1990-5-17",
         ).forEach { raw ->
             assertThat(BirthdayParser.parse(raw)).isNull()
         }

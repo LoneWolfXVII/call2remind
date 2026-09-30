@@ -58,6 +58,17 @@ class RequestCodesTest {
         assertThat(ids.size - codes.size).isAtMost(1)
     }
 
+    @Test
+    fun dataUriIsUniquePerIdAndSafelyEncoded() {
+        assertThat(RequestCodes.dataUri("HABIT|0|h")).isEqualTo("c2r://occ/HABIT%7C0%7Ch")
+        assertThat(RequestCodes.dataUri("CAL|1|a/b#c?d e")).isEqualTo("c2r://occ/CAL%7C1%7Ca%2Fb%23c%3Fd%20e")
+        assertThat(RequestCodes.dataUri("x-._~Z9")).isEqualTo("c2r://occ/x-._~Z9")
+        assertThat(RequestCodes.dataUri("é")).isEqualTo("c2r://occ/%C3%A9")
+
+        val ids = sampleIds() + listOf("a%7Cb", "a|b", "a b", "a+b")
+        assertThat(ids.map { RequestCodes.dataUri(it) }.toSet()).hasSize(ids.toSet().size)
+    }
+
     private fun sampleIds(): List<String> {
         val start = Instant.parse("2026-01-01T00:00:00Z")
         return (0 until 20_000).map { i ->

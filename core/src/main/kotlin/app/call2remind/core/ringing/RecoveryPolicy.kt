@@ -28,8 +28,9 @@ sealed interface RecoveryAction {
  * - SCHEDULED or SNOOZED with `fireAt < now` (strictly before; an occurrence due exactly now is
  *   left to its alarm): late by less than [ringIfLateWithin] → [RecoveryAction.RingNow];
  *   late by [ringIfLateWithin] or more → [RecoveryAction.MarkMissed].
- * - RINGING, unanswered, with `now - fireAt >= ringTimeout + ringingGrace` →
- *   [RecoveryAction.TimeOutRinging].
+ * - RINGING, unanswered, with `now - fireAt >= ringIfLateWithin` (stuck across a long outage;
+ *   `fireAt` is the ring start) → [RecoveryAction.MarkMissed], so it is not snoozed hours late;
+ *   otherwise with `now - fireAt >= ringTimeout + ringingGrace` → [RecoveryAction.TimeOutRinging].
  * - RINGING, answered, with `now - answeredAt >= answeredStaleAfter` →
  *   [RecoveryAction.FinishAnswered] (the user already heard it).
  *
@@ -65,7 +66,9 @@ data class RecoveryPolicy(
             val answeredAt = occurrence.answeredAt
             if (answeredAt == null) {
                 val ringingFor = Duration.between(occurrence.fireAt, now)
-                if (ringingFor >= snoozePolicy.ringTimeout.plus(ringingGrace)) {
+                if (ringingFor >= ringIfLateWithin) {
+                    RecoveryAction.MarkMissed(occurrence, ringingFor)
+                } else if (ringingFor >= snoozePolicy.ringTimeout.plus(ringingGrace)) {
                     RecoveryAction.TimeOutRinging(occurrence)
                 } else {
                     null

@@ -8,7 +8,9 @@ import java.time.MonthDay
  * Parses contact birthday strings (`ContactsContract.CommonDataKinds.Event.START_DATE`).
  *
  * Accepted (surrounding whitespace ignored):
- * - `yyyy-MM-dd` (e.g. `1990-05-17`)
+ * - `yyyy-MM-dd` (e.g. `1990-05-17`), optionally followed by a time part starting with `T` or a
+ *   space (e.g. `1990-05-17T00:00:00.000Z`, `1990-05-17 00:00:00`); only the date is used, with
+ *   no zone conversion
  * - `yyyyMMdd` (e.g. `19900517`)
  * - `--MM-dd` (e.g. `--05-17`, year unknown)
  * - `--MMdd` (e.g. `--0517`, year unknown)
@@ -18,7 +20,7 @@ import java.time.MonthDay
  * are treated as unknown.
  */
 object BirthdayParser {
-    private val WITH_YEAR_DASHED = Regex("""^(\d{4})-(\d{2})-(\d{2})$""")
+    private val WITH_YEAR_DASHED = Regex("""^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$""")
     private val WITH_YEAR_COMPACT = Regex("""^(\d{4})(\d{2})(\d{2})$""")
     private val NO_YEAR_DASHED = Regex("""^--(\d{2})-(\d{2})$""")
     private val NO_YEAR_COMPACT = Regex("""^--(\d{2})(\d{2})$""")

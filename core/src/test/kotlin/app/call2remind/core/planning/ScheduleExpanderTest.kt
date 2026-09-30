@@ -136,4 +136,31 @@ class ScheduleExpanderTest {
 
         assertThat(expander.fireTimes(r, ist("2026-10-02T00:00"), ist("2026-10-01T00:00"))).isEmpty()
     }
+
+    @Test
+    fun fireTimesAreTruncatedToMillis() {
+        val exact = ist("2026-10-01T10:00").plusNanos(999_999)
+        val r = reminder(schedule = Schedule.At(exact))
+        val millis = ist("2026-10-01T10:00")
+
+        assertThat(ScheduleExpander().fireTimes(r, millis, millis.plusSeconds(1))).containsExactly(millis)
+        assertThat(ScheduleExpander().firesAt(r, millis)).isTrue()
+        assertThat(ScheduleExpander().firesAt(r, exact)).isTrue()
+        assertThat(ScheduleExpander().firesAt(r, millis.plusMillis(1))).isFalse()
+    }
+
+    @Test
+    fun eventTimeForRecoversTheBaseInstantAcrossADstGap() {
+        // Daily 02:30 in New York, rung a day before. US DST starts 2026-03-08 (02:00 → 03:00).
+        val rule = RecurrenceRule(DayOfWeek.entries.toSet(), setOf(time("02:30")), date("2026-01-01"))
+        val r = reminder(zone = NEW_YORK, schedule = Schedule.Recurring(rule, LeadOffset.days(1)))
+        val fire = at("2026-03-08T03:30", -4) // Mar 9 02:30 EDT minus one day lands in the gap
+        val expander = ScheduleExpander()
+
+        assertThat(expander.fireTimes(r, fire, fire.plusMillis(1))).containsExactly(fire)
+        assertThat(expander.eventTimeFor(r, fire)).isEqualTo(at("2026-03-09T02:30", -4))
+        // The plain inverse is wrong here (an hour late), which is why SpeechText re-expands.
+        assertThat(LeadOffset.days(1).eventTimeFor(fire, NEW_YORK)).isEqualTo(at("2026-03-09T03:30", -4))
+        assertThat(expander.eventTimeFor(r, fire.plusSeconds(60))).isNull()
+    }
 }

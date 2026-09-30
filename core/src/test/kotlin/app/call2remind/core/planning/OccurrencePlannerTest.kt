@@ -247,6 +247,147 @@ class OccurrencePlannerTest {
         }
     }
 
+    @Test
+    fun subMillisecondScheduleDoesNotFlapAfterMillisecondRoundTrip() {
+        val exact = ist("2026-10-01T18:00").plusNanos(250_000)
+        val event = reminder(id = "evt", sourceType = SourceType.CALENDAR, schedule = Schedule.At(exact, LeadOffset.minutes(10)))
+        val first = planner.plan(listOf(event), emptyList())
+        // Room stores instants as epoch millis.
+        val stored = first.applyTo(emptyList()).map {
+            it.copy(plannedAt = Instant.ofEpochMilli(it.plannedAt.toEpochMilli()), fireAt = Instant.ofEpochMilli(it.fireAt.toEpochMilli()))
+        }
+
+        val second = planner.plan(listOf(event), stored)
+
+        assertThat(first.toCreate.single().plannedAt).isEqualTo(ist("2026-10-01T17:50"))
+        assertThat(second.hasChanges).isFalse()
+        assertThat(second.toKeep).containsExactlyElementsIn(stored)
+    }
+
+    @Test
+    fun reminderRecreatedUnderNewLocalIdIsRepointedNotCancelled() {
+        val existing = planner.plan(listOf(taskTomorrow), emptyList()).applyTo(emptyList())
+        val snoozed = Occurrence.scheduled(taskTomorrow, ist("2026-10-01T09:00"))
+            .copy(state = OccurrenceState.SNOOZED, fireAt = ist("2026-10-01T10:05"), ringBacks = 1)
+        val renamed = taskTomorrow.copy(id = "task-v2")
+
+        val plan = planner.plan(listOf(renamed), existing + snoozed)
+
+        assertThat(plan.toCancel).isEmpty()
+        assertThat(plan.toCreate).isEmpty()
+        assertThat(plan.toUpdate).containsExactly(
+            existing.single().copy(reminderId = "task-v2"),
+            snoozed.copy(reminderId = "task-v2"),
+        )
+        assertThat(plan.hasChanges).isTrue()
+        val applied = plan.applyTo(existing + snoozed)
+        assertThat(applied.map { it.reminderId }.toSet()).containsExactly("task-v2")
+        assertThat(applied.single { it.id == snoozed.id }.state).isEqualTo(OccurrenceState.SNOOZED)
+        assertThat(planner.plan(listOf(renamed), applied).hasChanges).isFalse()
+    }
+
+    @Test
+    fun removingOneOfTwoTwinRemindersRepointsToTheSurvivor() {
+        val twin = taskTomorrow.copy(id = "task-copy")
+        val existing = planner.plan(listOf(taskTomorrow, twin), emptyList()).applyTo(emptyList())
+        assertThat(existing.single().reminderId).isEqualTo("task")
+
+        val plan = planner.plan(listOf(twin), existing)
+
+        assertThat(plan.toCancel).isEmpty()
+        assertThat(plan.toCreate).isEmpty()
+        assertThat(plan.toUpdate).containsExactly(existing.single().copy(reminderId = "task-copy"))
+    }
+
+    @Test
+    fun disablingOneTwinRepointsToTheEnabledTwin() {
+        val twin = taskTomorrow.copy(id = "task-copy")
+        val existing = planner.plan(listOf(taskTomorrow, twin), emptyList()).applyTo(emptyList())
+
+        val plan = planner.plan(listOf(taskTomorrow.copy(enabled = false), twin), existing)
+
+        assertThat(plan.toCancel).isEmpty()
+        assertThat(plan.toUpdate.single().reminderId).isEqualTo("task-copy")
+    }
+
+    @Test
+    fun twinsBothPresentKeepTheStoredOwner() {
+        val twin = taskTomorrow.copy(id = "task-copy")
+        val existing = planner.plan(listOf(taskTomorrow, twin), emptyList()).applyTo(emptyList())
+
+        val plan = planner.plan(listOf(twin, taskTomorrow), existing)
+
+        assertThat(plan.hasChanges).isFalse()
+    }
+
+    @Test
+    fun snoozedOccurrenceSurvivesDefaultTimeChangeToAPastTime() {
+        val today = reminder(id = "today", schedule = Schedule.DateOnly(date("2026-10-01")))
+        val snoozed = Occurrence.scheduled(today, ist("2026-10-01T09:00"))
+            .copy(state = OccurrenceState.SNOOZED, fireAt = ist("2026-10-01T10:05"), ringBacks = 1)
+        val newDefaults = DefaultTimes.DEFAULT.with(SourceType.GOOGLE_TASKS, time("07:30"))
+
+        val plan = OccurrencePlanner(fixedClock(now), newDefaults).plan(listOf(today), listOf(snoozed))
+
+        assertThat(plan.toCancel).isEmpty()
+        assertThat(plan.toCreate).isEmpty() // 07:30 today is already past
+        assertThat(plan.toKeep).containsExactly(snoozed)
+    }
+
+    @Test
+    fun overdueScheduledSurvivesScheduleChangeButFutureScheduledDoesNot() {
+        val today = reminder(id = "today", schedule = Schedule.DateOnly(date("2026-10-01")))
+        val overdue = Occurrence.scheduled(today, ist("2026-10-01T09:00"))
+        val dueNow = Occurrence.scheduled(today, now)
+        val future = Occurrence.scheduled(today, ist("2026-10-01T10:00:01"))
+        val moved = today.copy(schedule = Schedule.DateOnly(date("2026-10-01"), time = time("08:00")))
+
+        val plan = planner.plan(listOf(moved), listOf(overdue, dueNow, future))
+
+        assertThat(plan.toKeep).containsExactly(overdue, dueNow)
+        assertThat(plan.toCancel).containsExactly(Cancellation(future, CancelReason.SCHEDULE_CHANGED))
+        assertThat(planner.plan(listOf(moved), plan.applyTo(listOf(overdue, dueNow, future))).hasChanges).isFalse()
+    }
+
+    @Test
+    fun snoozedAndOverdueAreStillCancelledWhenReminderRemovedOrDisabled() {
+        val overdue = Occurrence.scheduled(taskTomorrow, ist("2026-10-01T09:00"))
+        val snoozed = Occurrence.scheduled(taskTomorrow, ist("2026-09-30T09:00"))
+            .copy(state = OccurrenceState.SNOOZED, fireAt = ist("2026-10-01T10:05"), ringBacks = 1)
+
+        val disabled = planner.plan(listOf(taskTomorrow.copy(enabled = false)), listOf(overdue, snoozed))
+        val removed = planner.plan(emptyList(), listOf(overdue, snoozed))
+
+        assertThat(disabled.toCancel).containsExactly(
+            Cancellation(overdue, CancelReason.REMINDER_DISABLED),
+            Cancellation(snoozed, CancelReason.REMINDER_DISABLED),
+        )
+        assertThat(removed.toCancel.map { it.reason }.toSet()).containsExactly(CancelReason.REMINDER_REMOVED)
+        assertThat(removed.toCancel).hasSize(2)
+    }
+
+    @Test
+    fun applyToDeletesBeforeInsertingTheSameId() {
+        val old = Occurrence.scheduled(taskTomorrow, ist("2026-10-02T09:00")).copy(reminderId = "gone")
+        val fresh = Occurrence.scheduled(taskTomorrow, ist("2026-10-02T09:00"))
+        val plan = Plan(
+            toCreate = listOf(fresh),
+            toCancel = listOf(Cancellation(old, CancelReason.REMINDER_REMOVED)),
+            toKeep = emptyList(),
+        )
+
+        assertThat(plan.applyTo(listOf(old))).containsExactly(fresh)
+    }
+
+    @Test
+    fun terminalRowsInsideTheLookbackMustBeSupplied() {
+        // Contract: omitting (e.g. pruning) a terminal row that is still wanted resurrects it.
+        val done = Occurrence.scheduled(taskTomorrow, ist("2026-10-02T09:00")).copy(state = OccurrenceState.DONE)
+
+        assertThat(planner.plan(listOf(taskTomorrow), listOf(done)).toCreate).isEmpty()
+        assertThat(planner.plan(listOf(taskTomorrow), emptyList()).toCreate.single().id).isEqualTo(done.id)
+    }
+
     private fun nyHabit(): Reminder = reminder(
         id = "ny",
         sourceType = SourceType.HABIT,

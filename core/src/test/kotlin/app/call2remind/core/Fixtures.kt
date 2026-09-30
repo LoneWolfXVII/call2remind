@@ -36,6 +36,15 @@ object Fixtures {
 
     fun fixedClock(now: Instant): Clock = Clock.fixed(now, ZoneOffset.UTC)
 
+    /** A clock tests can move forward. */
+    class MutableClock(var now: Instant) : Clock() {
+        override fun instant(): Instant = now
+
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId?): Clock = this
+    }
+
     fun reminder(
         id: String = "r1",
         schedule: Schedule,
