@@ -553,38 +553,42 @@ private fun BoxScope.SheetHost(open: Boolean, onDismiss: () -> Unit, label: Stri
     if (!open && !visible) return
     val flingPx = with(density) { 1_200.dp.toPx() }
 
-    Box(
-        Modifier
-            .matchParentSize()
-            .clickable(interactionSource = null, indication = null, onClickLabel = stringResource(R.string.snooze_back_to_call)) { onDismiss() },
-    )
-    Column(
-        Modifier
-            .align(Alignment.BottomCenter)
-            .widthIn(max = 600.dp)
-            .fillMaxWidth()
-            .onSizeChanged { height = it.height }
-            .offset { IntOffset(0, (hidden.value * height).roundToInt()) }
-            .clip(C2RTheme.shapes.sheet)
-            .background(c.surface)
-            .semantics { paneTitle = label }
-            .testTag(CallTags.SNOOZE_SHEET)
-            .draggable(
-                orientation = Orientation.Vertical,
-                state = rememberDraggableState { delta ->
-                    if (height > 0) scope.launch { hidden.snapTo((hidden.value + delta / height).coerceIn(-0.03f, 1f)) }
-                },
-                onDragStopped = { velocity ->
-                    if (hidden.value > DISMISS_FRACTION || velocity > flingPx) {
-                        onDismiss()
-                    } else {
-                        hidden.animateTo(0f, motion.default(0.0005f), initialVelocity = if (height > 0) velocity / height else 0f)
-                    }
-                },
-            )
-            .windowInsetsPadding(WindowInsets.navigationBars),
-    ) {
-        content()
+    // Tap-to-dismiss area above the sheet; it never overlaps the sheet, so taps on the sheet's
+    // own controls cannot fall through to it.
+    Column(Modifier.matchParentSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clickable(interactionSource = null, indication = null, onClickLabel = stringResource(R.string.snooze_back_to_call)) { onDismiss() },
+        )
+        Column(
+            Modifier
+                .widthIn(max = 600.dp)
+                .fillMaxWidth()
+                .onSizeChanged { height = it.height }
+                .offset { IntOffset(0, (hidden.value * height).roundToInt()) }
+                .clip(C2RTheme.shapes.sheet)
+                .background(c.surface)
+                .semantics { paneTitle = label }
+                .testTag(CallTags.SNOOZE_SHEET)
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = rememberDraggableState { delta ->
+                        if (height > 0) scope.launch { hidden.snapTo((hidden.value + delta / height).coerceIn(-0.03f, 1f)) }
+                    },
+                    onDragStopped = { velocity ->
+                        if (hidden.value > DISMISS_FRACTION || velocity > flingPx) {
+                            onDismiss()
+                        } else {
+                            hidden.animateTo(0f, motion.default(0.0005f), initialVelocity = if (height > 0) velocity / height else 0f)
+                        }
+                    },
+                )
+                .windowInsetsPadding(WindowInsets.navigationBars),
+        ) {
+            content()
+        }
     }
 }
 

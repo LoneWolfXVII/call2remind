@@ -167,6 +167,26 @@ class CallScreenTest {
     }
 
     @Test
+    fun snoozeSheetChipsChangeTheLength() {
+        rule.setContent {
+            Call2RemindTheme(darkTheme = false, reduceMotion = false) {
+                SnoozeSheetContent(
+                    presentation = CallPresentation(),
+                    answered = true,
+                    now = at,
+                    onSnooze = { snoozes += it },
+                    onBack = {},
+                )
+            }
+        }
+
+        rule.onNodeWithTag(CallTags.snoozeChip(1)).performClick().assertIsSelected()
+        rule.onNodeWithTag(CallTags.SNOOZE_CONFIRM).assertTextEquals(context.getString(R.string.snooze_confirm, 10L)).performClick()
+
+        assertThat(snoozes).containsExactly(Duration.ofMinutes(10))
+    }
+
+    @Test
     fun snoozeSheetShowsRingBacksLeftForUnansweredCalls() {
         rule.setContent {
             Call2RemindTheme(darkTheme = false, reduceMotion = true) {
