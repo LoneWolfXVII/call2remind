@@ -104,7 +104,7 @@ class IncomingCallViewModelTest {
 
         awaitUntil { vm.state.value.finished }
         assertThat(stored()?.state).isEqualTo(OccurrenceState.SNOOZED)
-        assertThat(h.alarms.armed[occ.id]?.at).isEqualTo(T0.plus(minutes(5)))
+        awaitUntil(message = "snooze alarm") { h.alarms.armed[occ.id]?.at == T0.plus(minutes(5)) }
     }
 
     @Test

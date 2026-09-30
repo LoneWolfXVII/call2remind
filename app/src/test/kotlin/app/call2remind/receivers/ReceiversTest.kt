@@ -112,7 +112,7 @@ class ReceiversTest {
 
         awaitUntil { state(occ.id)?.state == OccurrenceState.SNOOZED }
         assertThat(state(occ.id)?.fireAt).isEqualTo(clock.now.plus(minutes(5)))
-        assertThat(alarms.armed[occ.id]?.at).isEqualTo(clock.now.plus(minutes(5)))
+        awaitUntil(message = "snooze alarm") { alarms.armed[occ.id]?.at == clock.now.plus(minutes(5)) }
     }
 
     @Test
