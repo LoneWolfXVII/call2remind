@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.preferencesDataStoreFile
 import app.call2remind.data.db.Call2RemindDb
 import app.call2remind.data.repo.OccurrenceRepository
 import app.call2remind.data.repo.ReminderRepository
@@ -42,6 +41,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import java.io.File
 import java.time.Clock
 import javax.inject.Qualifier
 import javax.inject.Singleton
@@ -107,7 +107,10 @@ object DataStoreModule {
         val deviceProtected = context.applicationContext.createDeviceProtectedStorageContext()
         return PreferenceDataStoreFactory.create(
             scope = CoroutineScope(io + SupervisorJob()),
-            produceFile = { deviceProtected.preferencesDataStoreFile(SETTINGS_FILE) },
+            // Not `deviceProtected.preferencesDataStoreFile(...)`: that resolves against
+            // `applicationContext.filesDir`, i.e. credential-protected storage, unreadable before
+            // first unlock.
+            produceFile = { File(deviceProtected.filesDir, "datastore/$SETTINGS_FILE.preferences_pb") },
         )
     }
 }
