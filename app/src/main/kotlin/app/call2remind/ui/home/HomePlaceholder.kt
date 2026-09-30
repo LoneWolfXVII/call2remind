@@ -44,6 +44,7 @@ enum class HomeTab(val titleRes: Int) {
 @Composable
 fun HomePlaceholder(modifier: Modifier = Modifier) {
     val c = C2RTheme.colors
+    val motion = C2RTheme.motion
     var tab by rememberSaveable { mutableStateOf(HomeTab.UP_NEXT) }
     val items = listOf(
         NavItem(HomeTab.UP_NEXT.name, stringResource(R.string.tab_up_next), C2RIcons.Phone),
@@ -63,7 +64,7 @@ fun HomePlaceholder(modifier: Modifier = Modifier) {
         ) {
             AnimatedContent(
                 targetState = tab,
-                transitionSpec = { fadeIn(C2RTheme.motion.fade()) togetherWith fadeOut(C2RTheme.motion.fade()) },
+                transitionSpec = { fadeIn(motion.fade()) togetherWith fadeOut(motion.fade()) },
                 label = "homeTab",
             ) { current ->
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -76,6 +76,7 @@ fun SelfTestScreen(
     modifier: Modifier = Modifier,
 ) {
     val phase = state.phase
+    val motion = C2RTheme.motion
     val headline = stringResource(
         when (phase) {
             SelfTestPhase.IDLE, SelfTestPhase.STARTING -> R.string.selftest_idle_headline
@@ -126,7 +127,7 @@ fun SelfTestScreen(
     ) {
         AnimatedContent(
             targetState = phase == SelfTestPhase.SCHEDULED,
-            transitionSpec = { fadeIn(C2RTheme.motion.fade()) togetherWith fadeOut(C2RTheme.motion.fade()) },
+            transitionSpec = { fadeIn(motion.fade()) togetherWith fadeOut(motion.fade()) },
             label = "selfTestBody",
         ) { scheduled ->
             if (scheduled) {
