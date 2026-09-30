@@ -110,3 +110,170 @@ jobs:
             **/build/reports/**
             **/build/test-results/**
           retention-days: 7
+
+  # End-to-end tests on emulators: real alarms, real full-screen intents over the lock screen,
+  # DND, time zone, calendar provider, process death. Runs next to `build` (does not block it).
+  instrumented:
+    name: instrumented (API ${{ matrix.api }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [34, 35]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build app and test APKs
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee build.log
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ matrix.api }}-google_apis-x86_64-v1
+
+      - name: Create AVD snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          emulator-boot-timeout: 900
+          script: echo "AVD snapshot created"
+
+      - name: End-to-end tests
+        id: e2e
+        continue-on-error: true
+        timeout-minutes: 30
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash scripts/emulator-e2e.sh
+
+      # The emulator occasionally fails to boot on hosted runners. The test script drops a marker
+      # as its first action, so a failure without it is a boot failure: retry once, cold boot.
+      - name: End-to-end tests (retry after boot failure)
+        id: e2e_retry
+        if: steps.e2e.outcome == 'failure' && hashFiles('emulator-booted.marker') == ''
+        timeout-minutes: 30
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: bash scripts/emulator-e2e.sh
+
+      - name: Check end-to-end result
+        if: steps.e2e.outcome != 'success' && steps.e2e_retry.outcome != 'success'
+        run: |
+          echo "e2e: ${{ steps.e2e.outcome }}, retry: ${{ steps.e2e_retry.outcome }}"
+          exit 1
+
+      - name: Summarize failure
+        if: failure()
+        env:
+          JOB_TITLE: instrumented (API ${{ matrix.api }})
+        run: |
+          python3 - <<'PY' > failure.md
+          import glob, os, re, xml.etree.ElementTree as ET
+          title = os.environ["JOB_TITLE"]
+          out = [f"## CI failure: {title}", ""]
+          def read(p):
+              return open(p, errors="replace").read().splitlines() if os.path.exists(p) else []
+          if not os.path.exists("emulator-booted.marker"):
+              out.append("**Emulator did not boot** (no test ran).")
+          build = read("build.log")
+          errs = [l for l in build if re.match(r"^(e: |> |FAILURE|\* What went wrong|Execution failed)", l)]
+          if errs:
+              out += ["### Build errors", "```"] + errs[:120] + ["```"]
+          summary = read("e2e-out/summary.txt")
+          if summary:
+              out += ["### E2E summary", "```"] + summary[:80] + ["```"]
+          results = {"passed": 0, "failed": 0, "skipped": 0}
+          fails, skips = [], []
+          for f in glob.glob("app/build/outputs/androidTest-results/connected/**/*.xml", recursive=True):
+              try:
+                  root = ET.parse(f).getroot()
+              except Exception:
+                  continue
+              for tc in root.iter("testcase"):
+                  name = f"{tc.get('classname','').split('.')[-1]}.{tc.get('name')}"
+                  bad = next((tc.find(t) for t in ("failure", "error") if tc.find(t) is not None), None)
+                  if bad is not None:
+                      results["failed"] += 1
+                      body = (bad.text or bad.get("message") or "").strip().splitlines()
+                      fails.append(f"- **{name}**\n  ```\n  " + "\n  ".join(body[:14]) + "\n  ```")
+                  elif tc.find("skipped") is not None:
+                      results["skipped"] += 1
+                      sk = tc.find("skipped")
+                      skips.append(f"- {name}: {(sk.get('message') or (sk.text or '')).strip()[:300]}")
+                  else:
+                      results["passed"] += 1
+          out.append(f"### Instrumentation tests: {results['passed']} passed, {results['failed']} failed, {results['skipped']} skipped")
+          out += fails[:40]
+          if skips:
+              out += ["", "Skipped:"] + skips[:20]
+          conn = read("e2e-out/connected.log")
+          conn_errs = [l for l in conn if re.search(r"(FAILED|Process crashed|INSTRUMENTATION_|Test run failed|What went wrong|Exception|> )", l)]
+          if conn_errs:
+              out += ["### connectedDebugAndroidTest log", "```"] + conn_errs[:60] + ["```"]
+          log = read("e2e-out/logcat.txt")
+          if log:
+              pat = re.compile(r"(C2R-E2E|AndroidRuntime|FATAL|TestRunner.*(failed|finished)|RingingService|RingLauncher|AlarmScheduler|Receivers|SchedulingEngine|RingNotifications|IncomingCall|app\.call2remind.*(Exception|denied|refused|not allowed)|ActivityTaskManager.*call2remind|NotificationService.*call2remind)")
+              picked = [l for l in log if pat.search(l)]
+              crash = [i for i, l in enumerate(log) if "FATAL EXCEPTION" in l]
+              for i in crash[:3]:
+                  picked += ["--- crash ---"] + log[i:i + 25]
+              out += ["### Logcat excerpt", "```"] + picked[-250:] + ["```"]
+          print("\n".join(out)[:60000])
+          PY
+          jq -Rs '{body: .}' failure.md > payload.json
+          curl -sS -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+            -d @payload.json > /dev/null
+
+      - name: Upload e2e reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-api-${{ matrix.api }}
+          path: |
+            build.log
+            e2e-out/**
+            app/build/outputs/androidTest-results/**
+            app/build/reports/androidTests/**
+          retention-days: 7
