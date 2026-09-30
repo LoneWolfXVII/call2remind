@@ -53,6 +53,9 @@ android {
         abortOnError = true
         warningsAsErrors = false
         checkReleaseBuilds = false
+        // Lint production code only. Analysing unit-test sources flakes on KSP/Hilt-generated
+        // test sources (FileNotFoundException under build/generated/ksp/debugUnitTest/.../byRounds).
+        ignoreTestSources = true
     }
 }
 
