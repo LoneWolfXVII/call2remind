@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- UI copy for the main screens (Up next, Detail, Sources, History, Settings, habit editor, ringtone picker). -->
+<resources>
+    <!-- Shared actions -->
+    <string name="action_cancel">Cancel</string>
+    <string name="action_ok">OK</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_new_habit">New habit</string>
+    <string name="sheet_close">Close</string>
+    <string name="cd_sync_now">Sync now</string>
+    <string name="cd_sync_all">Sync all now</string>
+    <string name="cd_syncing">Syncing</string>
+
+    <!-- Relative time -->
+    <string name="ago_just_now">just now</string>
+    <plurals name="ago_minutes">
+        <item quantity="one">%1$d min ago</item>
+        <item quantity="other">%1$d min ago</item>
+    </plurals>
+    <plurals name="ago_hours">
+        <item quantity="one">%1$d h ago</item>
+        <item quantity="other">%1$d h ago</item>
+    </plurals>
+    <plurals name="ago_days">
+        <item quantity="one">%1$d day ago</item>
+        <item quantity="other">%1$d days ago</item>
+    </plurals>
+    <string name="until_now">now</string>
+    <plurals name="until_minutes">
+        <item quantity="one">in %1$d min</item>
+        <item quantity="other">in %1$d min</item>
+    </plurals>
+    <plurals name="until_hours">
+        <item quantity="one">in %1$d h</item>
+        <item quantity="other">in %1$d h</item>
+    </plurals>
+    <string name="until_hours_minutes">in %1$d h %2$d min</string>
+    <string name="until_tomorrow">tomorrow</string>
+    <string name="until_on_day">on %1$s</string>
+
+    <!-- Schedules -->
+    <string name="days_daily">daily</string>
+    <string name="days_weekdays">weekdays</string>
+    <string name="days_weekends">weekends</string>
+    <string name="days_every_n_weeks">every %1$d weeks, %2$s</string>
+    <string name="lead_at_time">At start time</string>
+    <plurals name="lead_minutes_before">
+        <item quantity="one">%1$d min before</item>
+        <item quantity="other">%1$d min before</item>
+    </plurals>
+    <plurals name="lead_hours_before">
+        <item quantity="one">%1$d hour before</item>
+        <item quantity="other">%1$d hours before</item>
+    </plurals>
+    <plurals name="lead_days_before">
+        <item quantity="one">The day before</item>
+        <item quantity="other">%1$d days before</item>
+    </plurals>
+    <string name="cadence_no_time">no time set</string>
+    <string name="cadence_day_before">the day before</string>
+
+    <!-- Up next -->
+    <string name="upnext_next_call">Next call %1$s</string>
+    <string name="upnext_snoozed_status">Snoozed, rings again %1$s</string>
+    <string name="upnext_ringing_now">Ringing now</string>
+    <string name="upnext_tap_to_answer">Tap to answer</string>
+    <string name="section_today">Today, %1$s</string>
+    <string name="section_tomorrow">Tomorrow, %1$s</string>
+    <string name="section_later">Later</string>
+    <string name="row_snoozed">Snoozed</string>
+    <string name="row_skipped">Skipped</string>
+    <string name="swipe_done">Done</string>
+    <string name="swipe_skip">Skip today</string>
+    <string name="undo_done">Done: %1$s</string>
+    <string name="undo_skipped">Skipped today: %1$s</string>
+    <string name="empty_status">No calls lined up</string>
+    <string name="empty_title">Nothing is set to ring</string>
+    <string name="empty_body">Your calendars and tasks have nothing coming up. Add a habit, or check that the right sources are switched on.</string>
+    <string name="empty_check_sources">Check sources</string>
+
+    <!-- Detail -->
+    <string name="detail_schedule_at">%1$s, %2$s</string>
+    <string name="detail_schedule_date_only">%1$s, no time set. Rings at %2$s.</string>
+    <string name="detail_schedule_habit">%1$s at %2$s</string>
+    <string name="detail_schedule_yearly">Every year on %1$s at %2$s</string>
+    <string name="detail_next_ring_today">Next ring, today</string>
+    <string name="detail_next_ring_tomorrow">Next ring, tomorrow</string>
+    <string name="detail_next_ring_on">Next ring, %1$s</string>
+    <string name="detail_snoozed_until">Snoozed, rings again at</string>
+    <string name="detail_not_ringing">Not ringing</string>
+    <string name="detail_nothing_scheduled">Nothing scheduled yet</string>
+    <string name="detail_lead_default_time">At the %1$s default time</string>
+    <string name="detail_voice_says">Voice says</string>
+    <string name="detail_quote">“%1$s”</string>
+    <string name="detail_voice_off">Nothing. The voice is off, it just rings.</string>
+    <string name="detail_voice_generic">The title, then the time.</string>
+    <string name="detail_if_declined">If you decline</string>
+    <string name="detail_decline_ringback">Rings back in %1$d min, up to %2$d times</string>
+    <string name="detail_decline_missed">Goes straight to Missed</string>
+    <string name="detail_ringtone">Ringtone</string>
+    <string name="detail_ringtone_default">%1$s, the app default</string>
+    <string name="detail_ringtone_own">%1$s, chosen for this one</string>
+    <string name="detail_ringtone_source">%1$s, from %2$s settings</string>
+    <string name="detail_ring_event">Ring for this event</string>
+    <string name="detail_ring_habit">Ring for this habit</string>
+    <string name="detail_synced_notice">Synced from %1$s %2$s. To change the time or title, edit it there and it updates here.</string>
+    <string name="detail_synced_notice_unknown">Comes from %1$s. To change the time or title, edit it there and it updates here.</string>
+    <string name="detail_skip_today">Skip today</string>
+    <string name="detail_skip_once">Skip this one</string>
+    <string name="detail_edit_in">Edit in %1$s</string>
+    <string name="detail_edit_habit">Edit habit</string>
+    <string name="detail_delete_habit">Delete habit</string>
+    <string name="detail_delete_title">Delete “%1$s”?</string>
+    <string name="detail_delete_body">It stops ringing. Calls it already made stay in History.</string>
+    <string name="detail_delete_confirm">Delete habit</string>
+    <string name="detail_no_source_app">No app on this phone can open it.</string>
+
+    <!-- Sources -->
+    <string name="sources_summary_syncing">Syncing…</string>
+    <string name="sources_summary_synced">Everything synced %1$s</string>
+    <string name="sources_summary_never">Not synced yet</string>
+    <plurals name="sources_summary_attention">
+        <item quantity="one">%1$d source needs attention</item>
+        <item quantity="other">%1$d sources need attention</item>
+    </plurals>
+    <string name="sources_section_device">Calendars and contacts</string>
+    <string name="sources_section_tasks">Tasks and reminders</string>
+    <string name="sources_section_app">From Call2Remind</string>
+    <string name="sources_calendar_title">Phone calendars</string>
+    <string name="sources_choose_calendars">Choose calendars</string>
+    <string name="sources_all_calendars">All calendars on this phone</string>
+    <plurals name="sources_calendars_excluded">
+        <item quantity="one">%1$d calendar left out</item>
+        <item quantity="other">%1$d calendars left out</item>
+    </plurals>
+    <string name="sources_calendars_sheet_title">Calendars to ring for</string>
+    <string name="sources_calendars_sheet_body">Events in the calendars you switch off never ring. New calendars are included.</string>
+    <string name="sources_calendars_none">No calendars on this phone yet.</string>
+    <string name="sources_calendar_unnamed">Calendar</string>
+    <string name="sources_day_before">Also call the day before</string>
+    <string name="sources_day_before_hint">Time to get a card or a gift</string>
+    <string name="sources_best_effort">Best effort</string>
+    <string name="sources_samsung_footnote">Samsung Reminders has no public API, so calls come from its notifications. Turn on its sync to Microsoft To Do on the phone for reliable times.</string>
+    <string name="sources_habits">Habits</string>
+    <string name="sources_habits_none">None yet. Add one for things you repeat.</string>
+    <plurals name="sources_habits_count">
+        <item quantity="one">%1$d habit: %2$s</item>
+        <item quantity="other">%1$d habits: %2$s</item>
+    </plurals>
+    <string name="sources_habits_empty">Habits ring on the days and times you pick, like medicine or the gym.</string>
+    <string name="sources_habit_line">%1$s at %2$s</string>
+    <string name="sources_connect_title">Connect</string>
+    <string name="sources_connect_heading">Connect %1$s</string>
+    <string name="sources_connect_body">Signing in to %1$s isn\'t available in this version yet, so its reminders can\'t be read. It\'s coming in an update; everything else works without it.</string>
+    <string name="sources_connect_todo_hint">Once it\'s ready, connecting To Do also gives Samsung Reminders exact times, if Samsung Reminders syncs to To Do.</string>
+    <string name="source_connect">Connect</string>
+    <string name="source_retry">Try again</string>
+    <string name="source_state_off">Off</string>
+    <string name="source_state_syncing">Syncing…</string>
+    <string name="source_state_synced">Synced %1$s</string>
+    <string name="source_state_waiting">Waiting for the first sync</string>
+    <string name="source_state_listening">Listening for its notifications</string>
+    <string name="source_state_error_retry">Couldn\'t sync. Trying again soon.</string>
+    <string name="source_state_error">Couldn\'t sync: %1$s</string>
+    <string name="source_state_needs_calendar">Needs calendar access</string>
+    <string name="source_state_needs_contacts">Needs contacts access</string>
+    <string name="source_state_needs_notifications">Needs notification access</string>
+    <string name="source_state_not_connected">Not connected</string>
+
+    <!-- Habit editor -->
+    <string name="habit_new_title">New habit</string>
+    <string name="habit_edit_title">Edit habit</string>
+    <string name="habit_discard">Discard</string>
+    <string name="habit_save">Save</string>
+    <string name="habit_start_from">Start from</string>
+    <string name="habit_template_medicine">Medicine</string>
+    <string name="habit_template_gym">Gym</string>
+    <string name="habit_template_water">Water</string>
+    <string name="habit_template_standup">Standup</string>
+    <string name="habit_template_medicine_title">Take medicine</string>
+    <string name="habit_template_gym_title">Gym</string>
+    <string name="habit_template_water_title">Drink water</string>
+    <string name="habit_template_standup_title">Standup notes</string>
+    <string name="habit_title_label">What should it say?</string>
+    <string name="habit_title_placeholder">Take vitamin D</string>
+    <string name="habit_repeat_on">Repeat on</string>
+    <string name="habit_ring_at">Ring at</string>
+    <string name="habit_add_time">Add a time</string>
+    <string name="habit_add_time_title">Add a time</string>
+    <string name="habit_change_time_title">Change the time</string>
+    <string name="habit_change_time_cd">Change %1$s</string>
+    <string name="habit_remove_time">Remove this time</string>
+    <string name="habit_repeat_every">Repeat every</string>
+    <plurals name="habit_weeks">
+        <item quantity="one">Every week</item>
+        <item quantity="other">Every %1$d weeks</item>
+    </plurals>
+    <string name="habit_interval_less">Fewer weeks</string>
+    <string name="habit_interval_more">More weeks</string>
+    <string name="habit_ringtone_default">App default</string>
+    <string name="habit_read_aloud">Read it aloud when I answer</string>
+    <string name="habit_read_aloud_off">Off: it just rings</string>
+    <string name="habit_voice_preview">Reminder: %1$s. %2$s.</string>
+    <string name="habit_voice_preview_short">Reminder: %1$s.</string>
+    <string name="habit_notes">Note</string>
+    <string name="habit_notes_hint">Read aloud instead of the time (optional)</string>
+    <string name="habit_error_title">Give it a name so the call can say it.</string>
+    <string name="habit_error_days">Pick at least one day.</string>
+    <string name="habit_error_times">Add at least one time.</string>
+
+    <!-- Time picker -->
+    <string name="time_picker_hours">Hours</string>
+    <string name="time_picker_minutes">Minutes</string>
+    <string name="time_picker_meridiem">AM or PM</string>
+    <string name="time_picker_earlier">Earlier</string>
+    <string name="time_picker_later">Later</string>
+    <string name="time_picker_confirm">Ring at %1$s</string>
+
+    <!-- History -->
+    <string name="history_filter_all">All</string>
+    <string name="history_filter_missed">Missed only</string>
+    <string name="history_missed_count">Missed, %1$d</string>
+    <plurals name="history_missed_detail">
+        <item quantity="one">Rang once at %2$s, no answer</item>
+        <item quantity="other">Rang %1$d times from %2$s, no answer</item>
+    </plurals>
+    <plurals name="history_missed_detail_yesterday">
+        <item quantity="one">Yesterday %2$s, rang once, no answer</item>
+        <item quantity="other">Yesterday %2$s, rang %1$d times, no answer</item>
+    </plurals>
+    <plurals name="history_missed_detail_on">
+        <item quantity="one">%3$s %2$s, rang once, no answer</item>
+        <item quantity="other">%3$s %2$s, rang %1$d times, no answer</item>
+    </plurals>
+    <string name="history_ring_again">Ring me now</string>
+    <string name="history_mark_done">Mark done</string>
+    <string name="history_earlier_today">Earlier today</string>
+    <string name="history_yesterday">Yesterday</string>
+    <string name="history_outcome_done">Done</string>
+    <string name="history_outcome_snoozed_done">Snoozed, then done</string>
+    <string name="history_outcome_skipped">Skipped</string>
+    <string name="history_outcome_missed">Missed</string>
+    <string name="history_empty">No calls yet</string>
+    <string name="history_empty_missed">Nothing missed</string>
+    <string name="history_empty_body">Answered, done and skipped calls show up here.</string>
+    <string name="history_log_title">Ring log</string>
+    <string name="history_log_toggle">Show or hide the ring log</string>
+    <string name="history_log_close">Close the ring log</string>
+    <string name="history_log_empty">Nothing has rung yet.</string>
+
+    <!-- Settings -->
+    <string name="settings_section_ringing">Ringing</string>
+    <string name="settings_default_ringtone">Default ringtone</string>
+    <string name="settings_ringtone">Ringtone</string>
+    <string name="settings_ring_for">Ring for</string>
+    <string name="settings_seconds">%1$d s</string>
+    <string name="settings_read_aloud">Read reminders aloud</string>
+    <string name="settings_read_aloud_hint">After you answer, a voice says what it\'s for</string>
+    <string name="settings_section_snooze">Snooze and missed</string>
+    <string name="settings_decline_snoozes">Decline snoozes for</string>
+    <string name="settings_decline_snoozes_body">Declining a call, or letting it ring out, calls you again after this long.</string>
+    <string name="settings_ring_backs">Ring-backs before Missed</string>
+    <string name="settings_ring_backs_hint">Then it waits in History</string>
+    <string name="settings_ring_backs_none">A declined call goes straight to History</string>
+    <string name="settings_fewer">Fewer</string>
+    <string name="settings_more">More</string>
+    <string name="settings_section_no_time">Items without a time</string>
+    <string name="settings_no_time_footnote">Changes apply to calls that haven\'t rung yet.</string>
+    <string name="settings_time_all_day">All-day events</string>
+    <string name="settings_time_tasks">Google Tasks due on a day</string>
+    <string name="settings_time_all_day_body">All-day calendar events ring at this time on their day.</string>
+    <string name="settings_time_tasks_body">Tasks with a due date but no time ring at this time.</string>
+    <string name="settings_time_samsung_body">Samsung reminders without a time ring at this time.</string>
+    <string name="settings_time_birthday_body">Birthdays ring at this time on the day (and the day before, if that\'s on).</string>
+    <string name="settings_ring_at">Ring at %1$s</string>
+    <string name="settings_section_ringtones">Ringtone per source</string>
+    <string name="settings_ringtone_same">Same as default (%1$s)</string>
+    <string name="settings_ringtone_custom">A sound from the phone</string>
+    <string name="settings_section_cant_pick_up">When you can\'t pick up</string>
+    <string name="settings_in_call">During a phone call</string>
+    <string name="settings_in_call_hint">A quiet banner now, it rings after you hang up</string>
+    <string name="settings_dnd">Do Not Disturb</string>
+    <string name="settings_dnd_hint">Vibrates and shows the call without sound</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_section_setup">Setup</string>
+    <string name="settings_permissions">Permissions and battery</string>
+    <string name="settings_permissions_hint">Check what calls need to ring on time</string>
+    <string name="settings_test_call">Run the test call again</string>
+    <string name="settings_about">Call2Remind %1$s</string>
+    <string name="settings_about_body">No account, no server. Everything stays on this phone.</string>
+
+    <!-- Ringtones -->
+    <string name="ringtone_title">Ringtone</string>
+    <string name="ringtone_for_default">Plays for every reminder unless a source or habit has its own.</string>
+    <string name="ringtone_for_source">Plays for reminders from %1$s.</string>
+    <string name="ringtone_for_habit">Plays for this habit.</string>
+    <string name="ringtone_same_as_default">Same as default</string>
+    <string name="ringtone_default_desc">Follows the default</string>
+    <string name="ringtone_on_phone">On this phone</string>
+    <string name="ringtone_none_on_phone">No sounds found on this phone.</string>
+    <string name="ringtone_play">Play %1$s</string>
+    <string name="ringtone_stop">Stop %1$s</string>
+    <string name="tone_default_alarm">Phone\'s alarm sound</string>
+    <string name="tone_switchboard">Switchboard</string>
+    <string name="tone_switchboard_desc">Two short bursts, repeating</string>
+    <string name="tone_trunk_line">Trunk line</string>
+    <string name="tone_trunk_line_desc">Long single ring</string>
+    <string name="tone_desk_bell">Desk bell</string>
+    <string name="tone_desk_bell_desc">Bright double bell</string>
+    <string name="tone_rotary">Rotary</string>
+    <string name="tone_rotary_desc">Mechanical, a little loud</string>
+    <string name="tone_soft_pulse">Soft pulse</string>
+    <string name="tone_soft_pulse_desc">Gentle, for early mornings</string>
+    <string name="tone_phone_ringtone">Phone\'s ringtone</string>
+    <string name="tone_phone_ringtone_desc">Same as your real calls</string>
+</resources>

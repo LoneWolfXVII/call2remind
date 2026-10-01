@@ -1,5 +1,9 @@
 package app.call2remind.ui.di
 
+import app.call2remind.ui.ringtone.AndroidRingtoneCatalog
+import app.call2remind.ui.ringtone.MediaTonePreviewPlayer
+import app.call2remind.ui.ringtone.RingtoneCatalog
+import app.call2remind.ui.ringtone.TonePreviewPlayer
 import app.call2remind.ui.system.AndroidDeviceSetupChecker
 import app.call2remind.ui.system.DeviceSetupChecker
 import dagger.Binds
@@ -13,4 +17,10 @@ import dagger.hilt.components.SingletonComponent
 abstract class UiModule {
     @Binds
     abstract fun deviceSetupChecker(impl: AndroidDeviceSetupChecker): DeviceSetupChecker
+
+    @Binds
+    abstract fun ringtoneCatalog(impl: AndroidRingtoneCatalog): RingtoneCatalog
+
+    @Binds
+    abstract fun tonePreviewPlayer(impl: MediaTonePreviewPlayer): TonePreviewPlayer
 }

@@ -1,6 +1,7 @@
 package app.call2remind.ui.onboarding
 
 import android.content.Context
+import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -46,6 +47,10 @@ class OnboardingFlowTest {
 
     private fun text(id: Int) = context.getString(id)
 
+    private companion object {
+        const val HOME = "Home shell"
+    }
+
     @Test
     fun walksThroughEveryStepToHome() {
         val onboarding = OnboardingViewModel(checker, settings)
@@ -56,6 +61,7 @@ class OnboardingFlowTest {
                     start = StartDestination.Onboarding(WelcomeRoute),
                     onboarding = onboarding,
                     selfTest = selfTest,
+                    homeContent = { Text(HOME) },
                 )
             }
         }
@@ -75,7 +81,7 @@ class OnboardingFlowTest {
         awaitUntil(message = "onboarding stored") { settings.state.value.onboarding.selfTestDone }
         rule.waitForIdle()
 
-        rule.onNodeWithText(text(R.string.home_placeholder_body)).assertIsDisplayed()
+        rule.onNodeWithText(HOME).assertIsDisplayed()
         with(settings.state.value.onboarding) {
             assertThat(permissionsDone).isTrue()
             assertThat(batteryOptimizationDone).isTrue()
