@@ -223,12 +223,15 @@ class RingingServiceTest {
     fun doNotDisturbRingStillTimesOutLikeAnyRing() {
         ringContext.context = FakeRingContextProvider.IDLE.copy(dndTotalSilence = true)
         val occ = dueOccurrence("a", "Pay rent")
-        ring(occ, "Pay rent")
+        val (_, shadow) = ring(occ, "Pay rent")
 
         runBlocking { engine.handle(occ.id, OccurrenceEvent.RingTimeout) }
 
         awaitUntil(message = "snoozed after the ring timed out") { state(occ.id)?.state == OccurrenceState.SNOOZED }
-        awaitUntil(message = "alerts stopped") { alerts.active == null }
+        // The service pumps the (empty) queue and stops; wait for it, so none of its work outlives
+        // the test's database.
+        awaitUntil(message = "service stopped") { shadow.isStoppedBySelf }
+        assertThat(alerts.active).isNull()
     }
 
     @Test
