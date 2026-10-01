@@ -118,6 +118,21 @@ class SyncCoordinatorTest {
     }
 
     @Test
+    fun aReminderTheUserTurnedOffStaysOffAcrossSyncs() = runBlocking<Unit> {
+        calendar.next = { SourceSnapshot.Full(listOf(event("e1"), event("e2", 5))) }
+        coordinator.sync(setOf(SourceType.CALENDAR))
+        val e1 = h.reminders.getAll().single { it.externalId == "e1" }
+        h.engine.upsertReminders(listOf(e1.copy(enabled = false)), SourceIds.CALENDAR)
+        assertThat(h.occurrences.getPending()).hasSize(1)
+
+        coordinator.sync(setOf(SourceType.CALENDAR))
+
+        assertThat(h.reminders.getAll().single { it.externalId == "e1" }.enabled).isFalse()
+        assertThat(h.reminders.getAll().single { it.externalId == "e2" }.enabled).isTrue()
+        assertThat(h.occurrences.getPending().map { it.fireAt }).containsExactly(T0.plus(hours(5)))
+    }
+
+    @Test
     fun deltaUpsertsAndDeletes() = runBlocking<Unit> {
         tasks.next = { SourceSnapshot.Full(listOf(task("t1"), task("t2")), cursor = "v1") }
         coordinator.sync(SyncScope.CLOUD)

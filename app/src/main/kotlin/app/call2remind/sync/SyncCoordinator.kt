@@ -252,16 +252,25 @@ class SyncCoordinator(
     /** Stores [snapshot]; returns true if anything may have changed. */
     private suspend fun apply(source: ReminderSource, snapshot: SourceSnapshot, stored: List<Reminder>): Boolean = when (snapshot) {
         is SourceSnapshot.Full -> {
-            reminderRepo.replaceForSource(source.sourceId, snapshot.reminders)
+            reminderRepo.replaceForSource(source.sourceId, snapshot.reminders.keepingUserDisabled(stored))
             true
         }
         is SourceSnapshot.Delta -> {
-            if (snapshot.upserts.isNotEmpty()) reminderRepo.upsertAll(snapshot.upserts, source.sourceId)
+            if (snapshot.upserts.isNotEmpty()) reminderRepo.upsertAll(snapshot.upserts.keepingUserDisabled(stored), source.sourceId)
             val idsByExternal = stored.associate { it.externalId to it.id }
             val ids = snapshot.removedExternalIds.mapNotNull { idsByExternal[it] }
             if (ids.isNotEmpty()) reminderRepo.delete(ids)
             snapshot.upserts.isNotEmpty() || ids.isNotEmpty()
         }
+    }
+
+    /**
+     * Sources always report reminders as enabled; a reminder the user switched off in the app
+     * (Detail → "Ring for this event") must stay off when the same item syncs again.
+     */
+    private fun List<Reminder>.keepingUserDisabled(stored: List<Reminder>): List<Reminder> {
+        val off = stored.filterNot { it.enabled }.mapTo(HashSet()) { it.externalId }
+        return if (off.isEmpty()) this else map { if (it.externalId in off) it.copy(enabled = false) else it }
     }
 
     private suspend fun availabilitySafely(source: ReminderSource): SourceAvailability = try {
