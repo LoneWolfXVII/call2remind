@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.IOException
-import java.util.concurrent.Executors
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -126,50 +125,41 @@ class AndroidRingtoneCatalog @Inject constructor(
 class MediaTonePreviewPlayer @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : TonePreviewPlayer {
-    @Volatile
     private var player: MediaPlayer? = null
     private val _playing = MutableStateFlow<String?>(null)
     override val playing: StateFlow<String?> = _playing.asStateFlow()
 
-    /** Opening the data source reads the media provider / disk: never on the main thread. */
-    private val setup = Executors.newSingleThreadExecutor { r -> Thread(r, "tone-preview").apply { isDaemon = true } }
-
     override fun play(uri: String?) {
         stop()
-        // Created here (main) so its callbacks arrive on the main looper.
+        val target = uri?.let(Uri::parse)
+            ?: RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
+            ?: Settings.System.DEFAULT_ALARM_ALERT_URI
         val mp = MediaPlayer()
-        mp.setOnPreparedListener { if (player === it) it.start() }
-        mp.setOnErrorListener { failed, _, _ ->
-            if (player === failed) stop()
-            true
-        }
-        player = mp
-        _playing.value = uri ?: DEFAULT_TONE_KEY
-        setup.execute {
-            if (player !== mp) return@execute
-            try {
-                val target = uri?.let(Uri::parse)
-                    ?: RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
-                    ?: Settings.System.DEFAULT_ALARM_ALERT_URI
-                mp.setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build(),
-                )
-                mp.setDataSource(context, target)
-                mp.isLooping = true
-                mp.prepareAsync()
-            } catch (e: IOException) {
-                fail(mp, e)
-            } catch (e: IllegalArgumentException) {
-                fail(mp, e)
-            } catch (e: IllegalStateException) {
-                // Also: stopped (released) while the source was opening.
-                fail(mp, e)
-            } catch (e: SecurityException) {
-                fail(mp, e)
+        try {
+            mp.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build(),
+            )
+            mp.setDataSource(context, target)
+            mp.isLooping = true
+            mp.setOnPreparedListener { if (player === it) it.start() }
+            mp.setOnErrorListener { failed, _, _ ->
+                if (player === failed) stop()
+                true
             }
+            player = mp
+            _playing.value = uri ?: DEFAULT_TONE_KEY
+            mp.prepareAsync()
+        } catch (e: IOException) {
+            fail(mp, e)
+        } catch (e: IllegalArgumentException) {
+            fail(mp, e)
+        } catch (e: IllegalStateException) {
+            fail(mp, e)
+        } catch (e: SecurityException) {
+            fail(mp, e)
         }
     }
 
@@ -189,11 +179,8 @@ class MediaTonePreviewPlayer @Inject constructor(
     private fun fail(mp: MediaPlayer, e: Exception) {
         Log.w(TAG, "Cannot preview", e)
         mp.release()
-        // Only clear what this player owned: a newer preview may already be playing.
-        if (player === mp) {
-            player = null
-            _playing.value = null
-        }
+        if (player === mp) player = null
+        _playing.value = null
     }
 
     private companion object {
