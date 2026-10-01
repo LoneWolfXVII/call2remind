@@ -106,8 +106,13 @@ interface SyncScheduler {
     /**
      * Enqueues a one-shot forced sync of [scope] now (expedited on Android 12+): on app open and
      * after connecting a source. Cloud work waits for a network.
+     *
+     * By default a request is dropped while a one-shot sync of the same scope is already queued
+     * or running (`KEEP`): that sync does the same work. With [replacePending] (time zone change)
+     * the queued or running one is cancelled and a new one enqueued (`REPLACE`), because a sync
+     * already past reading the device zone would store date-only items in the old zone.
      */
-    fun requestSync(scope: SyncScope = SyncScope.ALL)
+    fun requestSync(scope: SyncScope = SyncScope.ALL, replacePending: Boolean = false)
 }
 
 @Singleton
@@ -134,12 +139,13 @@ class WorkManagerSyncScheduler @Inject constructor(
         )
     }
 
-    override fun requestSync(scope: SyncScope) {
+    override fun requestSync(scope: SyncScope, replacePending: Boolean) {
+        val policy = if (replacePending) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
         if (scope != SyncScope.CLOUD) {
-            workManager.enqueueUniqueWork(SyncWorkers.NOW_LOCAL, ExistingWorkPolicy.KEEP, oneShot<LocalSyncWorker>(null))
+            workManager.enqueueUniqueWork(SyncWorkers.NOW_LOCAL, policy, oneShot<LocalSyncWorker>(null))
         }
         if (scope != SyncScope.LOCAL) {
-            workManager.enqueueUniqueWork(SyncWorkers.NOW_CLOUD, ExistingWorkPolicy.KEEP, oneShot<CloudSyncWorker>(CONNECTED))
+            workManager.enqueueUniqueWork(SyncWorkers.NOW_CLOUD, policy, oneShot<CloudSyncWorker>(CONNECTED))
         }
     }
 

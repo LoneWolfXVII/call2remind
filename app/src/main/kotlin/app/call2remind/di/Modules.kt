@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import app.call2remind.core.time.DeviceClock
 import app.call2remind.data.db.Call2RemindDb
 import app.call2remind.data.repo.OccurrenceRepository
 import app.call2remind.data.repo.ReminderRepository
@@ -62,9 +63,14 @@ annotation class IoDispatcher
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
+    /**
+     * The device clock. Its zone is read at every call ([DeviceClock]), never frozen at process
+     * start, so zone-dependent code (new habits, wall-clock expansion, spoken times, day grouping)
+     * follows TIMEZONE_CHANGED without a process restart.
+     */
     @Provides
     @Singleton
-    fun clock(): Clock = Clock.systemDefaultZone()
+    fun clock(): Clock = DeviceClock()
 
     @Provides
     @DefaultDispatcher

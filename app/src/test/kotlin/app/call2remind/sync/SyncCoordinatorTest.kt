@@ -106,6 +106,19 @@ class SyncCoordinatorTest {
     }
 
     @Test
+    fun theInjectedConstructorReadsTheZoneFromTheClockOnEverySync() = runBlocking<Unit> {
+        val injected = SyncCoordinator(setOf(calendar), h.sources, h.reminders, h.engine, h.settings, access, h.clock)
+        calendar.next = { SourceSnapshot.Full(emptyList()) }
+        injected.sync(setOf(SourceType.CALENDAR))
+        val la = java.time.ZoneId.of("America/Los_Angeles")
+        h.clock.currentZone = la
+
+        injected.sync(setOf(SourceType.CALENDAR))
+
+        assertThat(calendar.requests.map { it.zone }).containsExactly(UTC, la).inOrder()
+    }
+
+    @Test
     fun fullSnapshotDeletesRemindersThatDisappeared() = runBlocking<Unit> {
         calendar.next = { SourceSnapshot.Full(listOf(event("e1"), event("e2"))) }
         coordinator.sync(setOf(SourceType.CALENDAR))

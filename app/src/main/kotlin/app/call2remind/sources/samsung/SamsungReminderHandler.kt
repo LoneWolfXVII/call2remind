@@ -55,7 +55,7 @@ class SamsungReminderHandler(
         occurrences: OccurrenceRepository,
         settings: SettingsRepository,
         clock: Clock,
-    ) : this(engine, occurrences, settings, clock, SamsungNotificationDeduper(), DEFAULT_CLAIM_TIMEOUT, ZoneId::systemDefault)
+    ) : this(engine, occurrences, settings, clock, SamsungNotificationDeduper(), DEFAULT_CLAIM_TIMEOUT, { clock.zone })
 
     suspend fun onPosted(notification: PostedNotification, cancel: (key: String) -> Unit): SamsungOutcome {
         val sourceSettings = settings.current().sources

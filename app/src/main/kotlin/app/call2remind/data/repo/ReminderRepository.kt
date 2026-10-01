@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Clock
 import java.time.Instant
+import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -51,6 +52,12 @@ interface ReminderRepository {
     suspend fun replaceForSource(sourceId: String, reminders: List<Reminder>): SourceReplaceResult
 
     suspend fun delete(ids: Collection<String>): Int
+
+    /**
+     * Moves reminders [ids] to [zone] (only the zone changes: source, timestamps and the rest are
+     * kept). Returns the number of rows updated. See [app.call2remind.core.time.DeviceZonePolicy].
+     */
+    suspend fun setZone(ids: Collection<String>, zone: ZoneId): Int
 }
 
 /** See [ReminderRepository.getAllForPlanning]. */
@@ -118,6 +125,9 @@ class RoomReminderRepository @Inject constructor(
 
     override suspend fun delete(ids: Collection<String>): Int =
         db.withTransaction { ids.toList().chunked(MAX_SQL_ARGS).sumOf { dao.deleteByIds(it) } }
+
+    override suspend fun setZone(ids: Collection<String>, zone: ZoneId): Int =
+        db.withTransaction { ids.toList().chunked(MAX_SQL_ARGS).sumOf { dao.setZone(it, zone.id) } }
 
     /** De-duplicates by `(sourceType, externalId)` (last wins) and reuses stored ids. */
     private suspend fun resolveIds(reminders: List<Reminder>): List<Reminder> {

@@ -30,12 +30,16 @@ fun hours(n: Long): Duration = Duration.ofHours(n)
 /** A [Clock] tests move by hand. Thread-safe. */
 class MutableClock(
     now: Instant = T0,
-    private val zone: ZoneId = UTC,
+    zone: ZoneId = UTC,
 ) : Clock() {
     @Volatile
     var now: Instant = now
 
-    override fun getZone(): ZoneId = zone
+    /** The zone [getZone] returns; tests change it to simulate the device changing time zone. */
+    @Volatile
+    var currentZone: ZoneId = zone
+
+    override fun getZone(): ZoneId = currentZone
 
     override fun withZone(zone: ZoneId): Clock = MutableClock(now, zone)
 

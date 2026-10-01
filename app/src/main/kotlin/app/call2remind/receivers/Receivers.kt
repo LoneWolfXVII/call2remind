@@ -6,6 +6,8 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.os.UserManagerCompat
 import app.call2remind.core.ringing.OccurrenceEvent
+import app.call2remind.core.time.DeviceClock
+import app.call2remind.core.time.DeviceZonePolicy
 import app.call2remind.di.ApplicationScope
 import app.call2remind.scheduling.ReplanReason
 import app.call2remind.scheduling.RingStep
@@ -23,6 +25,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Duration
+import java.util.TimeZone
 import javax.inject.Inject
 
 private const val TAG = "Receivers"
@@ -131,10 +134,12 @@ class BootReceiver : BroadcastReceiver() {
  * jump made overdue are recovered. Exact-alarm access granted (API 31+): re-arm so alarms that
  * fell back to inexact become exact again.
  *
- * A time zone change also re-syncs the sources: synced date-only items (all-day events, task due
- * dates, birthdays) are stored with the zone the device had at sync time, so without a re-sync
- * they would keep ringing at the old zone's wall-clock time (e.g. 09:00 in Kolkata = 20:30 the
- * evening before in Los Angeles) until the next periodic sync.
+ * Time zone change: synced date-only items (all-day events, task due dates, birthdays) and habits
+ * are stored with a zone; left alone they would keep ringing at the old zone's wall-clock time
+ * (09:00 in Kolkata = 20:30 the evening before in Los Angeles). The replan in
+ * [SchedulingEngine.onTimeChanged] moves them to the new zone right here ([DeviceZonePolicy]),
+ * without waiting for a sync. A forced re-sync then refreshes the sources in the new zone; it
+ * REPLACEs a queued or running sync, which may have read the old zone.
  */
 @AndroidEntryPoint
 class TimeChangeReceiver : BroadcastReceiver() {
@@ -148,17 +153,34 @@ class TimeChangeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             Intent.ACTION_TIME_CHANGED -> runAsync(scope) { engine.onTimeChanged() }
-            Intent.ACTION_TIMEZONE_CHANGED -> runAsync(scope) {
-                engine.onTimeChanged()
-                // WorkManager lives in credential-protected storage: only once unlocked (a sync
-                // also runs on the first app open after unlock).
-                if (UserManagerCompat.isUserUnlocked(context)) syncScheduler.requestSync()
+            Intent.ACTION_TIMEZONE_CHANGED -> {
+                refreshDefaultZone(intent.getStringExtra(EXTRA_TIME_ZONE))
+                runAsync(scope) {
+                    engine.onTimeChanged()
+                    // WorkManager lives in credential-protected storage: only once unlocked (a
+                    // sync also runs on the first app open after unlock).
+                    if (UserManagerCompat.isUserUnlocked(context)) syncScheduler.requestSync(replacePending = true)
+                }
             }
             ACTION_EXACT_ALARM_PERMISSION_CHANGED -> runAsync(scope) { engine.reconcile() }
         }
     }
 
     companion object {
+        /** `Intent.EXTRA_TIMEZONE` (API 30+): the new zone id on ACTION_TIMEZONE_CHANGED. */
+        const val EXTRA_TIME_ZONE = "time-zone"
+
+        /**
+         * The system resets every process's default zone when the zone changes, but that call and
+         * this broadcast are separate one-way IPCs. If the broadcast names a zone the process does
+         * not report yet, drop the cached default so `ZoneId.systemDefault()` (and [DeviceClock])
+         * re-read it from the system now.
+         */
+        internal fun refreshDefaultZone(newZoneId: String?) {
+            if (newZoneId.isNullOrEmpty() || TimeZone.getDefault().id == newZoneId) return
+            TimeZone.setDefault(null)
+        }
+
         /** `AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED` (API 31+). */
         const val ACTION_EXACT_ALARM_PERMISSION_CHANGED =
             "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED"

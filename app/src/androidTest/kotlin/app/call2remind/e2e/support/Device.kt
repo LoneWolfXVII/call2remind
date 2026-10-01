@@ -108,13 +108,21 @@ object Device {
      * Pending alarms of our alarm receiver in `dumpsys alarm`: blocks that start with
      * `<TYPE> #n: Alarm{` and mention our fire action (statistics sections have no such blocks).
      */
-    fun pendingAppAlarmCount(): Int {
+    fun pendingAppAlarmCount(): Int = appAlarmTimes().size
+
+    /**
+     * Trigger times (epoch millis, the `origWhen` of each `dumpsys alarm` entry) of this app's
+     * pending occurrence alarms; -1 for an entry whose header has no parsable `origWhen`.
+     */
+    fun appAlarmTimes(): List<Long> {
         val header = Regex("""^(\s*)(RTC_WAKEUP|RTC|ELAPSED_WAKEUP|ELAPSED|ELAPSED_REALTIME_WAKEUP|ELAPSED_REALTIME) #\d+: Alarm\{""")
-        var count = 0
+        val origWhen = Regex("""origWhen (-?\d+)""")
+        val times = mutableListOf<Long>()
         var blockIndent = -1
+        var blockWhen = -1L
         var matched = false
         fun close() {
-            if (blockIndent >= 0 && matched) count++
+            if (blockIndent >= 0 && matched) times += blockWhen
             blockIndent = -1
             matched = false
         }
@@ -123,6 +131,7 @@ object Device {
             if (m != null) {
                 close()
                 blockIndent = m.groupValues[1].length
+                blockWhen = origWhen.find(line)?.groupValues?.get(1)?.toLongOrNull() ?: -1L
                 continue
             }
             if (blockIndent < 0 || line.isBlank()) continue
@@ -134,7 +143,7 @@ object Device {
             }
         }
         close()
-        return count
+        return times
     }
 
     fun alarmDumpForApp(): String =

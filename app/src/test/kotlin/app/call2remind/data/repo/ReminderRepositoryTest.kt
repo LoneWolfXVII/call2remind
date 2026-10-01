@@ -167,4 +167,20 @@ class ReminderRepositoryTest {
         assertThat(sources.getAll().map { it.id }).containsExactly("habits")
         assertThat(reminders.getAll().map { it.externalId }).containsExactly("h1")
     }
+
+    @Test
+    fun setZoneMovesOnlyTheZoneOfTheGivenReminders() = runBlocking<Unit> {
+        val la = ZoneId.of("America/Los_Angeles")
+        val moved = reminders.upsert(reminder("a", sourceType = SourceType.CALENDAR), sourceId = "cal:work")
+        val untouched = reminders.upsert(reminder("b", sourceType = SourceType.CALENDAR), sourceId = "cal:work")
+
+        assertThat(reminders.setZone(listOf(moved.id), la)).isEqualTo(1)
+
+        assertThat(reminders.get(moved.id)).isEqualTo(moved.copy(zone = la))
+        assertThat(reminders.get(untouched.id)).isEqualTo(untouched)
+        // Still attributed to its source: deleting the source deletes it.
+        sources.delete("cal:work")
+        assertThat(reminders.getAll()).isEmpty()
+        assertThat(reminders.setZone(emptyList(), la)).isEqualTo(0)
+    }
 }

@@ -59,6 +59,9 @@ interface ReminderDao {
 
     @Query("DELETE FROM reminders WHERE sourceId = :sourceId")
     suspend fun deleteBySource(sourceId: String): Int
+
+    @Query("UPDATE reminders SET zoneId = :zoneId WHERE id IN (:ids)")
+    suspend fun setZone(ids: List<String>, zoneId: String): Int
 }
 
 @Dao

@@ -12,6 +12,7 @@ import app.call2remind.core.log.RingLogType
 import app.call2remind.core.model.Occurrence
 import app.call2remind.core.model.OccurrenceState
 import app.call2remind.core.model.Schedule
+import app.call2remind.core.model.SourceType
 import app.call2remind.data.db.Call2RemindDb
 import app.call2remind.data.repo.OccurrenceRepository
 import app.call2remind.ringing.RingWakeLock
@@ -43,6 +44,9 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
 import javax.inject.Inject
 
 @HiltAndroidTest
@@ -303,6 +307,28 @@ class ReceiversTest {
         awaitUntil { workManager.getWorkInfosForUniqueWork(SyncWorkers.NOW_LOCAL).get().isNotEmpty() }
         // Enqueued right after the local one, on the receiver's thread: wait for it too.
         awaitUntil { workManager.getWorkInfosForUniqueWork(SyncWorkers.NOW_CLOUD).get().isNotEmpty() }
+    }
+
+    @Test
+    fun timeZoneChangeMovesAllDayRemindersToTheNewWallTimeWithoutASync() {
+        WorkManagerTestInitHelper.initializeTestWorkManager(app, Configuration.Builder().setExecutor(SynchronousExecutor()).build())
+        val kolkata = ZoneId.of("Asia/Kolkata")
+        clock.currentZone = kolkata
+        val allDay = reminder("ev", Schedule.DateOnly(LocalDate.of(2026, 3, 11), LocalTime.of(9, 0)), SourceType.CALENDAR, zone = kolkata)
+        runBlocking { engine.upsertReminders(listOf(allDay)) }
+        // 09:00 IST = 03:30Z; 09:00 PDT = 16:00Z.
+        val old = Occurrence.scheduled(allDay, Instant.parse("2026-03-11T03:30:00Z"))
+        val moved = Occurrence.scheduled(allDay, Instant.parse("2026-03-11T16:00:00Z"))
+        assertThat(alarms.armed).containsKey(old.id)
+
+        // The calendar source lacks its permission here, so no sync can move it: the receiver's own
+        // replan does.
+        clock.currentZone = ZoneId.of("America/Los_Angeles")
+        TimeChangeReceiver().onReceive(app, Intent(Intent.ACTION_TIMEZONE_CHANGED))
+
+        awaitUntil { alarms.armed[moved.id]?.at == moved.fireAt }
+        assertThat(alarms.armed).doesNotContainKey(old.id)
+        assertThat(state(moved.id)?.state).isEqualTo(OccurrenceState.SCHEDULED)
     }
 
     @Test

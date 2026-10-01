@@ -12,6 +12,7 @@ import app.call2remind.core.ringing.RecoveryAction
 import app.call2remind.core.ringing.RecoveryPolicy
 import app.call2remind.core.ringing.RingQueue
 import app.call2remind.core.ringing.TransitionResult
+import app.call2remind.core.time.DeviceZonePolicy
 import app.call2remind.data.repo.OccurrenceRepository
 import app.call2remind.data.repo.ReminderRepository
 import app.call2remind.ringing.RingContextProvider
@@ -88,12 +89,20 @@ class SchedulingEngine @Inject constructor(
     /**
      * Plans the rolling window and applies the plan. With a [lookback] (boot), rings planned in
      * `[now - lookback, now)` that never got a row are created too, for recovery to handle.
+     *
+     * First, reminders that follow the device zone ([DeviceZonePolicy]: synced date-only sources,
+     * and habits per its switch) but are stored with another zone are moved to the clock's
+     * current zone and saved, so they keep their local wall time after a zone change. Doing it
+     * here, under the scheduling lock, means every replan (zone change, app start, and the replan
+     * after each sync — even a sync that read the old zone before the change) converges on the
+     * current zone without waiting for a re-sync. SNOOZED / RINGING occurrences are kept by the
+     * planner; future SCHEDULED ones move to the new wall-clock instant.
      */
     suspend fun replan(reason: ReplanReason, lookback: Duration = Duration.ZERO): ReplanResult = mutex.withLock {
         val now = clock.instant()
         val current = settings.current()
         val planner = OccurrencePlanner(clock, current.defaultTimes, OccurrencePlanner.DEFAULT_WINDOW, lookback)
-        val snapshot = reminders.getAllForPlanning()
+        val snapshot = reminders.getAllForPlanning().let { it.copy(reminders = followDeviceZone(it.reminders)) }
         val existing = occurrences.getForPlanning(now.minus(lookback)).let { rows ->
             if (snapshot.unreadableIds.isEmpty()) {
                 rows
@@ -233,7 +242,8 @@ class SchedulingEngine @Inject constructor(
     }
 
     /**
-     * Wall clock or time zone changed: wall-clock schedules resolve to new instants (replan) and
+     * Wall clock or time zone changed: wall-clock schedules resolve to new instants (replan; on a
+     * zone change that includes moving device-zone reminders to the new zone, see [replan]) and
      * rings the jump made overdue are recovered (ring if < 2 h late, else missed).
      */
     suspend fun onTimeChanged(): ReplanResult {
@@ -335,6 +345,17 @@ class SchedulingEngine @Inject constructor(
             alarms.arm(current, if (current.fireAt.isAfter(now)) current.fireAt else now, isSoonest = true)
         }
         current
+    }
+
+    /** [all] with device-zone followers moved (and saved) to the current zone; see [replan]. */
+    private suspend fun followDeviceZone(all: List<Reminder>): List<Reminder> {
+        val zone = clock.zone
+        val moved = DeviceZonePolicy.toDeviceZone(all, zone)
+        if (moved.isEmpty()) return all
+        reminders.setZone(moved.map { it.id }, zone)
+        Log.i(TAG, "Moved ${moved.size} reminder(s) to the device zone $zone")
+        val byId = moved.associateBy { it.id }
+        return all.map { byId[it.id] ?: it }
     }
 
     /** Recovery would mark, time out or finish [occurrence] (anything but "ring it now"). */

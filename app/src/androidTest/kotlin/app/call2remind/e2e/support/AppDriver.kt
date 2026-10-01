@@ -9,6 +9,7 @@ import app.call2remind.core.model.OccurrenceState
 import app.call2remind.core.model.Reminder
 import app.call2remind.core.model.Schedule
 import app.call2remind.core.model.SourceType
+import app.call2remind.core.recurrence.RecurrenceRule
 import app.call2remind.core.ringing.OccurrenceEvent
 import app.call2remind.data.db.Call2RemindDb
 import app.call2remind.data.db.OccurrenceEntity
@@ -20,8 +21,11 @@ import app.call2remind.scheduling.AndroidAlarmScheduler
 import app.call2remind.settings.OnboardingFlags
 import app.call2remind.settings.Settings
 import kotlinx.coroutines.runBlocking
+import java.time.DayOfWeek
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.UUID
@@ -92,6 +96,22 @@ object AppDriver {
         check(row.state == OccurrenceState.SCHEDULED) { "new occurrence is ${row.state}" }
         e2eLog("scheduled '${reminder.title}' ($id) at $fireAt")
         return ScheduledCall(reminder, id, fireAt)
+    }
+
+    /** Stores a daily habit ringing at [at] (wall time in the device's current zone), through the engine. */
+    fun scheduleDailyHabit(label: String, at: LocalTime): Reminder {
+        val externalId = EXTERNAL_PREFIX + UUID.randomUUID()
+        val reminder = Reminder(
+            id = ReminderIds.of(SourceType.HABIT, externalId),
+            sourceType = SourceType.HABIT,
+            externalId = externalId,
+            title = newTitle(label),
+            schedule = Schedule.Recurring(RecurrenceRule(DayOfWeek.entries.toSet(), setOf(at), LocalDate.now().minusDays(1))),
+            zone = ZoneId.systemDefault(),
+        )
+        runBlocking { app.engine.upsertReminders(listOf(reminder)) }
+        e2eLog("scheduled daily habit '${reminder.title}' at $at ${reminder.zone}")
+        return reminder
     }
 
     fun handle(occurrenceId: String, event: OccurrenceEvent) = runBlocking { app.engine.handle(occurrenceId, event) }

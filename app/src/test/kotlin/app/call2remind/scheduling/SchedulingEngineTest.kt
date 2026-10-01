@@ -34,8 +34,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.time.DayOfWeek
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
 
 @RunWith(RobolectricTestRunner::class)
 class SchedulingEngineTest {
@@ -653,5 +655,89 @@ class SchedulingEngineTest {
 
     private companion object {
         const val RACE_WINDOW_MS = 300L
+    }
+
+    // --- device zone (DeviceZonePolicy) ---
+
+    private val kolkata: ZoneId = ZoneId.of("Asia/Kolkata")
+    private val losAngeles: ZoneId = ZoneId.of("America/Los_Angeles")
+
+    private fun daily(at: LocalTime) =
+        Schedule.Recurring(RecurrenceRule(DayOfWeek.entries.toSet(), setOf(at), LocalDate.of(2026, 3, 1)))
+
+    private suspend fun activeTimes(reminder: Reminder): List<Instant> =
+        h.occurrences.getActive().filter { it.reminderId == reminder.id }.map { it.fireAt }.sorted()
+
+    @Test
+    fun zoneChangeMovesDeviceZoneRemindersToTheSameWallTimeInTheNewZone() = runBlocking<Unit> {
+        clock.currentZone = kolkata
+        val allDay = reminder("ev", Schedule.DateOnly(LocalDate.of(2026, 3, 11), LocalTime.of(9, 0)), SourceType.CALENDAR, zone = kolkata)
+        val habit = reminder("walk", daily(LocalTime.of(9, 0)), zone = kolkata)
+        val todo = reminder("todo", Schedule.DateOnly(LocalDate.of(2026, 3, 11), LocalTime.of(9, 0)), SourceType.MS_TODO, zone = kolkata)
+        engine.upsertReminders(listOf(allDay, habit, todo))
+        // 09:00 IST = 03:30Z.
+        val oldAllDay = occOf(allDay, Instant.parse("2026-03-11T03:30:00Z"))
+        assertThat(activeTimes(allDay)).containsExactly(oldAllDay.fireAt)
+        assertThat(activeTimes(habit)).containsExactly(Instant.parse("2026-03-11T03:30:00Z"), Instant.parse("2026-03-12T03:30:00Z"))
+
+        clock.currentZone = losAngeles
+        engine.onTimeChanged()
+
+        // 09:00 PDT = 16:00Z; the window ends at T0 + 48 h = 2026-03-12T08:00Z.
+        val newAllDay = occOf(allDay.copy(zone = losAngeles), Instant.parse("2026-03-11T16:00:00Z"))
+        assertThat(activeTimes(allDay)).containsExactly(newAllDay.fireAt)
+        assertThat(activeTimes(habit))
+            .containsExactly(Instant.parse("2026-03-10T16:00:00Z"), Instant.parse("2026-03-11T16:00:00Z")).inOrder()
+        // MS To Do carries its own zone: unchanged.
+        assertThat(activeTimes(todo)).containsExactly(Instant.parse("2026-03-11T03:30:00Z"))
+        assertThat(h.reminders.get(allDay.id)?.zone).isEqualTo(losAngeles)
+        assertThat(h.reminders.get(habit.id)?.zone).isEqualTo(losAngeles)
+        assertThat(h.reminders.get(todo.id)?.zone).isEqualTo(kolkata)
+        // Alarms follow: the old instants are cancelled, the new ones armed.
+        assertThat(h.alarms.cancelled).contains(oldAllDay.id)
+        assertThat(h.alarms.armed[newAllDay.id]?.at).isEqualTo(newAllDay.fireAt)
+        assertThat(h.alarms.armed).doesNotContainKey(oldAllDay.id)
+    }
+
+    @Test
+    fun zoneChangeKeepsSnoozedAndRingingHabitOccurrences() = runBlocking<Unit> {
+        clock.currentZone = kolkata
+        // 13:30 IST = 08:00Z = T0: both due now.
+        val first = reminder("first", daily(LocalTime.of(13, 30)), zone = kolkata)
+        val second = reminder("second", daily(LocalTime.of(13, 30)), zone = kolkata)
+        engine.upsertReminders(listOf(first, second))
+        val snoozed = (engine.claimNext() as RingStep.Ring).occurrence
+        engine.handle(snoozed.id, OccurrenceEvent.Snooze(minutes(10)))
+        val ringing = (engine.claimNext() as RingStep.Ring).occurrence
+
+        clock.currentZone = losAngeles
+        engine.onTimeChanged()
+
+        val snoozedNow = h.occurrences.get(snoozed.id)
+        assertThat(snoozedNow?.state).isEqualTo(OccurrenceState.SNOOZED)
+        assertThat(snoozedNow?.fireAt).isEqualTo(T0.plus(minutes(10)))
+        assertThat(h.occurrences.get(ringing.id)?.state).isEqualTo(OccurrenceState.RINGING)
+        // Later rings move to 13:30 PDT (20:30Z).
+        for (r in listOf(first, second)) {
+            assertThat(activeTimes(r)).containsAtLeast(Instant.parse("2026-03-10T20:30:00Z"), Instant.parse("2026-03-11T20:30:00Z"))
+            assertThat(activeTimes(r)).doesNotContain(Instant.parse("2026-03-11T08:00:00Z"))
+        }
+    }
+
+    @Test
+    fun replanAfterASyncThatStillUsedTheOldZoneConvergesOnTheDeviceZone() = runBlocking<Unit> {
+        // The zone already changed, but a sync that read the old zone stores its reminders late.
+        clock.currentZone = losAngeles
+        val allDay = reminder("ev", Schedule.DateOnly(LocalDate.of(2026, 3, 11), LocalTime.of(9, 0)), SourceType.GOOGLE_TASKS, zone = kolkata)
+        h.reminders.upsertAll(listOf(allDay), sourceId = "tasks")
+
+        engine.replan(ReplanReason.SYNC)
+
+        assertThat(activeTimes(allDay)).containsExactly(Instant.parse("2026-03-11T16:00:00Z"))
+        assertThat(h.reminders.get(allDay.id)?.zone).isEqualTo(losAngeles)
+        // Nothing left to move: a second replan writes nothing and changes nothing.
+        val again = engine.replan(ReplanReason.SYNC)
+        assertThat(again.created).isEmpty()
+        assertThat(again.deleted).isEmpty()
     }
 }

@@ -80,7 +80,7 @@ class SyncCoordinator(
         clock: Clock,
     ) : this(
         sources, sourceRepo, reminderRepo, engine, settings, notificationAccess, clock,
-        Backoff(base = DEFAULT_BACKOFF_BASE, cap = DEFAULT_BACKOFF_CAP), ZoneId::systemDefault,
+        Backoff(base = DEFAULT_BACKOFF_BASE, cap = DEFAULT_BACKOFF_CAP), { clock.zone },
     )
 
     private data class Failure(val count: Int, val nextAttemptAt: Instant)

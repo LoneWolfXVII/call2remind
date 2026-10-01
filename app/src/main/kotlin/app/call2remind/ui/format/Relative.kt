@@ -131,7 +131,7 @@ fun untilText(until: Until): String = when (until) {
  * for countdowns and "x min ago" labels. One ticker per screen.
  */
 @Composable
-fun rememberMinuteTicker(clock: Clock = Clock.systemDefaultZone()): State<Instant> {
+fun rememberMinuteTicker(clock: Clock = Clock.systemUTC()): State<Instant> {
     val state = remember(clock) { mutableStateOf(clock.instant()) }
     LaunchedEffect(clock) {
         while (true) {

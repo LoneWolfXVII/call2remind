@@ -19,12 +19,16 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 
 /**
  * Losing alarms and moving clocks: BOOT_COMPLETED re-arms alarms the OS dropped, and a time zone
- * change keeps date-only reminders at their wall-clock time in the new zone.
+ * change keeps date-only reminders and habits at their wall-clock time in the new zone.
  * (Process death with a pending alarm is covered by [ProcessDeathPhases], driven from the shell.)
  */
 @LargeTest
@@ -92,12 +96,59 @@ class RecoveryE2eTest {
 
         assumeTrue("could not set the time zone to $ZONE_B", Device.setTimeZone(ZONE_B))
         val atB = date.atTime(time).atZone(ZoneId.of(ZONE_B)).toInstant()
-        val moved = Waits.within(60_000) { AppDriver.activeFor(reminder.id).map { it.fireAt } == listOf(atB) }
+        // The receiver's own replan moves it (no sync needed), so this is quick.
+        val moved = Waits.within(20_000) { AppDriver.activeFor(reminder.id).map { it.fireAt } == listOf(atB) }
         assertWithMessage(
             "after the zone change the occurrence rings at $date $time in $ZONE_B ($atB), not $atA; " +
                 "active: ${AppDriver.activeFor(reminder.id).map { it.fireAt }}, reminder zone now ${AppDriver.reminderByTitle(title)?.zoneId}",
         ).that(moved).isTrue()
-        assertWithMessage("re-armed for the new wall time").that(Device.pendingAppAlarmCount()).isAtLeast(1)
+        assertThat(AppDriver.reminderByTitle(title)?.zoneId).isEqualTo(ZONE_B)
+        // The row moves first and its alarm is armed just after (old one cancelled, new one armed):
+        // wait for the alarm itself rather than sampling dumpsys once.
+        awaitAlarmMoved(from = atA, to = atB)
+    }
+
+    @Test
+    fun timeZoneChangeKeepsHabitAtLocalWallTime() {
+        val original = Device.deviceTimeZone().ifBlank { "GMT" }
+        e2e.onTearDown("restore time zone $original") { Device.setTimeZone(original) }
+        assumeTrue("could not set the time zone to $ZONE_A", Device.setTimeZone(ZONE_A))
+        val zoneA = ZoneId.of(ZONE_A)
+        val zoneB = ZoneId.of(ZONE_B)
+        // An hour from now in A; the same wall time in B is 13.5 h (PDT) / 14.5 h (PST) away, so
+        // the habit never rings during the test.
+        val wall = LocalTime.now(zoneA).plusHours(1).truncatedTo(ChronoUnit.MINUTES)
+        val habit = AppDriver.scheduleDailyHabit("habit tz", wall)
+        assertThat(habit.zone).isEqualTo(zoneA)
+        val nextInA = nextAt(wall, zoneA)
+        Waits.until("habit planned at $wall $ZONE_A ($nextInA)", 10_000) {
+            AppDriver.activeFor(habit.id).minOfOrNull { it.fireAt } == nextInA
+        }
+
+        assumeTrue("could not set the time zone to $ZONE_B", Device.setTimeZone(ZONE_B))
+        val nextInB = nextAt(wall, zoneB)
+        val moved = Waits.within(20_000) { AppDriver.activeFor(habit.id).minOfOrNull { it.fireAt } == nextInB }
+        val active = AppDriver.activeFor(habit.id).map { it.fireAt }
+        assertWithMessage("habit keeps its wall time $wall in $ZONE_B (next $nextInB); active: $active").that(moved).isTrue()
+        assertWithMessage("every ring at $wall local in $ZONE_B; active: $active")
+            .that(active.map { it.atZone(zoneB).toLocalTime() }.distinct()).containsExactly(wall)
+        assertThat(AppDriver.reminderByTitle(habit.title)?.zoneId).isEqualTo(ZONE_B)
+        awaitAlarmMoved(from = nextInA, to = nextInB)
+    }
+
+    /** Next instant at local [wall] time in [zone], strictly after now. */
+    private fun nextAt(wall: LocalTime, zone: ZoneId): Instant {
+        val now = ZonedDateTime.now(zone)
+        val today = now.with(wall)
+        return (if (today.isAfter(now)) today else today.plusDays(1)).toInstant()
+    }
+
+    private fun awaitAlarmMoved(from: Instant, to: Instant) {
+        val armed = Waits.within(15_000) {
+            Device.appAlarmTimes().let { to.toEpochMilli() in it && from.toEpochMilli() !in it }
+        }
+        assertWithMessage("alarm moved from $from to $to; app alarms: ${Device.appAlarmTimes().map(Instant::ofEpochMilli)}")
+            .that(armed).isTrue()
     }
 
     private companion object {

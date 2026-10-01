@@ -52,6 +52,20 @@ class HabitRepositoryTest {
     }
 
     @Test
+    fun newHabitsUseTheDeviceZoneAtCreationTime() = runBlocking<Unit> {
+        val kolkata = java.time.ZoneId.of("Asia/Kolkata")
+        h.clock.currentZone = kolkata
+
+        val habit = repo.create("Walk", daily9)
+
+        assertThat(habit.zone).isEqualTo(kolkata)
+        assertThat(repo.get(habit.id)?.zone).isEqualTo(kolkata)
+        // 09:00 IST on Mar 11 / 12 = 03:30Z (Mar 10 09:00 IST is before T0).
+        assertThat(h.occurrences.getPending().map { it.fireAt })
+            .containsExactly(java.time.Instant.parse("2026-03-11T03:30:00Z"), java.time.Instant.parse("2026-03-12T03:30:00Z")).inOrder()
+    }
+
+    @Test
     fun updateReplansWithTheNewRule() = runBlocking<Unit> {
         val habit = repo.create("Walk", daily9)
 

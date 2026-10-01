@@ -173,4 +173,30 @@ class SyncWorkersTest {
         val cloud = workManager.getWorkInfosForUniqueWork(SyncWorkers.NOW_CLOUD).get().single()
         assertThat(cloud.constraints.requiredNetworkType).isEqualTo(NetworkType.CONNECTED)
     }
+
+    @Test
+    fun aReplacingRequestSupersedesAQueuedSyncWhileAPlainOneIsDropped() {
+        WorkManagerTestInitHelper.initializeTestWorkManager(
+            app,
+            Configuration.Builder().setExecutor(SynchronousExecutor()).setWorkerFactory(factory).build(),
+        )
+        val scheduler = WorkManagerSyncScheduler(app)
+        val workManager = WorkManager.getInstance(app)
+        fun cloud() = workManager.getWorkInfosForUniqueWork(SyncWorkers.NOW_CLOUD).get().filter { it.state != WorkInfo.State.CANCELLED }
+
+        scheduler.requestSync(SyncScope.CLOUD)
+        val first = cloud().single()
+        // Waiting for a network (test constraints are unmet), i.e. still queued.
+        assertThat(first.state).isEqualTo(WorkInfo.State.ENQUEUED)
+
+        scheduler.requestSync(SyncScope.CLOUD)
+        assertThat(cloud().single().id).isEqualTo(first.id)
+
+        // A time zone change must not be swallowed by the queued (or running) old-zone sync.
+        scheduler.requestSync(SyncScope.CLOUD, replacePending = true)
+        val replacement = cloud().single()
+        assertThat(replacement.id).isNotEqualTo(first.id)
+        assertThat(workManager.getWorkInfoById(first.id).get()?.state ?: WorkInfo.State.CANCELLED).isEqualTo(WorkInfo.State.CANCELLED)
+        assertThat(replacement.constraints.requiredNetworkType).isEqualTo(NetworkType.CONNECTED)
+    }
 }
