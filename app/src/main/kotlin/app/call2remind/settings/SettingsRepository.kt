@@ -79,6 +79,7 @@ class DataStoreSettingsRepository @Inject constructor(
                 dndHintShown = prefs[ONB_DND_HINT] ?: false,
             ),
             sources = readSources(prefs),
+            themeMode = prefs[THEME_MODE]?.let { name -> ThemeMode.entries.firstOrNull { it.name == name } } ?: defaults.themeMode,
         )
     }
 
@@ -123,6 +124,7 @@ class DataStoreSettingsRepository @Inject constructor(
         prefs[ONB_SELF_TEST] = settings.onboarding.selfTestDone
         prefs[ONB_DND_HINT] = settings.onboarding.dndHintShown
         writeSources(prefs, settings.sources)
+        prefs[THEME_MODE] = settings.themeMode.name
     }
 
     private fun parseTime(text: String): LocalTime? = try {
@@ -147,6 +149,7 @@ class DataStoreSettingsRepository @Inject constructor(
         val CALENDAR_EXCLUDED = stringSetPreferencesKey("calendar_excluded_ids")
         val BIRTHDAY_DAY_BEFORE = booleanPreferencesKey("birthday_day_before")
         val SAMSUNG_PACKAGES = stringSetPreferencesKey("samsung_packages")
+        val THEME_MODE = stringPreferencesKey("theme_mode")
 
         fun defaultTimeKey(type: SourceType) = stringPreferencesKey("default_time_${type.name}")
         fun ringtoneKey(type: SourceType) = stringPreferencesKey("ringtone_${type.name}")

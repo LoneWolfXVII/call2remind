@@ -16,6 +16,7 @@ import java.time.Duration
  * @property defaultRingtoneUri app-wide ringtone; `null` = system default alarm sound.
  * @property sourceRingtones per-source ringtone overrides.
  * @property sources per-source sync options (enable flags, calendar window, birthdays…).
+ * @property themeMode light / dark, or follow the system.
  */
 data class Settings(
     val defaultTimes: DefaultTimes = DefaultTimes.DEFAULT,
@@ -27,6 +28,7 @@ data class Settings(
     val sourceRingtones: Map<SourceType, String> = emptyMap(),
     val onboarding: OnboardingFlags = OnboardingFlags(),
     val sources: SourceSettings = SourceSettings(),
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
 ) {
     /** The snooze policy for the state machine / recovery (values are clamped to be valid). */
     val snoozePolicy: SnoozePolicy
@@ -46,6 +48,9 @@ data class Settings(
         const val DEFAULT_MAX_RING_BACKS: Int = 3
     }
 }
+
+/** App theme choice (Settings → Appearance). */
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 /** One-time onboarding / hint flags. */
 data class OnboardingFlags(
