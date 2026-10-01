@@ -39,6 +39,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -214,11 +215,18 @@ private fun SheetFrame(
                 Modifier
                     .fillMaxWidth()
                     .pointerInput(Unit) {
+                        // The sheet moves with the finger, so local pointer positions barely change: track the
+                        // accumulated drag instead, or the release velocity is ~0 and a fling never dismisses.
                         val tracker = VelocityTracker()
+                        var dragged = 0f
                         detectVerticalDragGestures(
-                            onDragStart = { tracker.resetTracking() },
+                            onDragStart = {
+                                tracker.resetTracking()
+                                dragged = 0f
+                            },
                             onVerticalDrag = { change, delta ->
-                                tracker.addPosition(change.uptimeMillis, change.position)
+                                dragged += delta
+                                tracker.addPosition(change.uptimeMillis, Offset(0f, dragged))
                                 if (height > 0) scope.launch { hidden.snapTo((hidden.value + delta / height).coerceIn(-0.03f, 1f)) }
                             },
                             onDragEnd = {

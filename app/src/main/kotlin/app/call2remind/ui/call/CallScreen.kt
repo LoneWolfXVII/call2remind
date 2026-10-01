@@ -107,6 +107,8 @@ data class CallActions(
     val onOpenSource: (() -> Unit)? = null,
     val onReadAgain: () -> Unit = {},
     val onStopVoice: () -> Unit = {},
+    /** Back with the snooze sheet closed: the host sends the call to the background (never ends it). */
+    val onBack: () -> Unit = {},
 )
 
 /**
@@ -140,7 +142,10 @@ fun CallScreen(
         }
     }
     val sheet by animateFloatAsState(if (sheetOpen) 1f else 0f, motion.default(0.001f), label = "sheetDepth")
-    BackHandler(enabled = sheetOpen) { sheetOpen = false }
+    // Back never ends a ringing or answered call: it closes the sheet, or the host backgrounds the call.
+    BackHandler {
+        if (sheetOpen) sheetOpen = false else actions.onBack()
+    }
 
     Box(
         modifier
@@ -578,11 +583,18 @@ private fun BoxScope.SheetHost(open: Boolean, onDismiss: () -> Unit, label: Stri
                 .testTag(CallTags.SNOOZE_SHEET)
                 .pointerInput(Unit) {
                     // Follows a downward drag; taps (no touch slop) pass through to the controls.
+                    // The sheet moves with the finger, so local pointer positions barely change: track the
+                    // accumulated drag instead, or the release velocity is ~0 and a fling never dismisses.
                     val tracker = VelocityTracker()
+                    var dragged = 0f
                     detectVerticalDragGestures(
-                        onDragStart = { tracker.resetTracking() },
+                        onDragStart = {
+                            tracker.resetTracking()
+                            dragged = 0f
+                        },
                         onVerticalDrag = { change, delta ->
-                            tracker.addPosition(change.uptimeMillis, change.position)
+                            dragged += delta
+                            tracker.addPosition(change.uptimeMillis, Offset(0f, dragged))
                             if (height > 0) scope.launch { hidden.snapTo((hidden.value + delta / height).coerceIn(-0.03f, 1f)) }
                         },
                         onDragEnd = {

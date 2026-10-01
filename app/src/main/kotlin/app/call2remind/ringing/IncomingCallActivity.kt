@@ -1,5 +1,6 @@
 package app.call2remind.ringing
 
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -75,6 +76,7 @@ class IncomingCallActivity : ComponentActivity() {
                         onOpenSource = if (sourceIntents.isEmpty()) null else ({ openSource(sourceIntents) }),
                         onReadAgain = presentationViewModel::readAgain,
                         onStopVoice = presentationViewModel::stopVoice,
+                        onBack = ::sendToBackground,
                     )
                 }
                 CallScreen(state = state, presentation = presentation, speech = speech, actions = actions)
@@ -92,8 +94,29 @@ class IncomingCallActivity : ComponentActivity() {
         handleAnswer(intent)
     }
 
+    /** Back while the call is up: keep ringing / talking in the background; only a finished call closes. */
+    private fun sendToBackground() {
+        if (viewModel.state.value.finished) finish() else moveTaskToBack(true)
+    }
+
+    /**
+     * The source app can't open over the lock screen: ask to unlock first and launch once the
+     * keyguard is gone (nothing happens if the user cancels). Unlocked, launch straight away.
+     */
     private fun openSource(intents: List<Intent>) {
-        SystemIntents.launchFirst(this, intents)
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        if (keyguard == null || !keyguard.isKeyguardLocked) {
+            SystemIntents.launchFirst(this, intents)
+            return
+        }
+        keyguard.requestDismissKeyguard(
+            this,
+            object : KeyguardManager.KeyguardDismissCallback() {
+                override fun onDismissSucceeded() {
+                    SystemIntents.launchFirst(this@IncomingCallActivity, intents)
+                }
+            },
+        )
     }
 
     private fun handleAnswer(intent: Intent?) {
