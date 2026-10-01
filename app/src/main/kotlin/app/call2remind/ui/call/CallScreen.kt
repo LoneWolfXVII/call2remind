@@ -82,6 +82,7 @@ import app.call2remind.ui.components.SourceChip
 import app.call2remind.ui.components.staggeredEntrance
 import app.call2remind.ui.format.TimeFormat
 import app.call2remind.ui.format.currentLocale
+import app.call2remind.ui.format.snoozeButtonText
 import app.call2remind.ui.format.timeParts
 import app.call2remind.ui.theme.C2RTheme
 import app.call2remind.ui.theme.Haptic
@@ -344,7 +345,7 @@ private fun IncomingPane(
             ) {
                 if (presentation.canSnooze) {
                     PillButton(
-                        text = stringResource(R.string.call_snooze_minutes, presentation.defaultSnooze.toMinutes()),
+                        text = snoozeButtonText(presentation.defaultSnooze),
                         onClick = {
                             haptics.perform(Haptic.Reject)
                             onDecline()

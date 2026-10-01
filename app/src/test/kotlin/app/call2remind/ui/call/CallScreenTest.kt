@@ -119,6 +119,16 @@ class CallScreenTest {
     }
 
     @Test
+    fun aSubMinuteSnoozeReadsInSecondsNeverZeroMinutes() {
+        show(presentation = CallPresentation(transcript = "Reminder: Standup.", defaultSnooze = Duration.ofSeconds(30)))
+
+        rule.onNodeWithText(context.getString(R.string.call_snooze_seconds, 30L)).assertIsDisplayed().performClick()
+        rule.onNodeWithText(context.getString(R.string.call_snooze_minutes, 0L)).assertDoesNotExist()
+
+        assertThat(declines).isEqualTo(1)
+    }
+
+    @Test
     fun holdingSnoozeOpensTheSheetAndSnoozesForTheChosenLength() {
         show()
 

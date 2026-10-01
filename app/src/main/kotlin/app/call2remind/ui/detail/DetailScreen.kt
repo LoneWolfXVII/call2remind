@@ -73,6 +73,7 @@ import app.call2remind.ui.format.dayMonth
 import app.call2remind.ui.format.habitCadenceText
 import app.call2remind.ui.format.leadText
 import app.call2remind.ui.format.rememberMinuteTicker
+import app.call2remind.ui.format.snoozeLengthText
 import app.call2remind.ui.format.timeParts
 import app.call2remind.ui.navigation.SharedKeys
 import app.call2remind.ui.navigation.sharedBoundsIfAvailable
@@ -319,12 +320,12 @@ private fun voiceLine(reminder: Reminder, state: DetailUiState, zone: ZoneId): S
 
 @Composable
 private fun declineLine(state: DetailUiState): String {
-    val minutes = state.settings.snoozeLength.toMinutes()
+    val length = snoozeLengthText(state.settings.snoozeLength)
     val max = state.settings.maxRingBacks
     return if (max <= 0) {
         stringResource(R.string.detail_decline_missed)
     } else {
-        stringResource(R.string.detail_decline_ringback, minutes, max)
+        stringResource(R.string.detail_decline_ringback, length, max)
     }
 }
 

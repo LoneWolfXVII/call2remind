@@ -50,6 +50,7 @@ import app.call2remind.ui.components.labelRes
 import app.call2remind.ui.components.rowDivider
 import app.call2remind.ui.components.staggeredEntrance
 import app.call2remind.ui.format.localTimeText
+import app.call2remind.ui.format.snoozeLengthText
 import app.call2remind.ui.ringtone.RingtoneTarget
 import app.call2remind.ui.theme.C2RTheme
 import kotlinx.coroutines.delay
@@ -185,7 +186,7 @@ fun SettingsScreen(state: SettingsUiState, nav: SettingsNav, actions: SettingsAc
             Section(stringResource(R.string.settings_section_snooze), Modifier.staggeredEntrance(1, distance = 12.dp, staggerMs = 40)) {
                 NavRow(
                     title = stringResource(R.string.settings_decline_snoozes),
-                    value = stringResource(R.string.snooze_minutes, s.snoozeLength.toMinutes()),
+                    value = snoozeLengthText(s.snoozeLength),
                     onClick = { sheetKind = SNOOZE_SHEET },
                     modifier = Modifier.testTag(SettingsTags.SNOOZE),
                 )
