@@ -1,0 +1,235 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # A newer push supersedes this ref's unit build.
+    concurrency:
+      group: ci-${{ github.ref }}
+      cancel-in-progress: true
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build, unit tests, lint
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace --continue \
+            :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug 2>&1 | tee build.log
+
+      # Room exports its schema to app/schemas at compile time (ksp room.schemaLocation). If the
+      # exported JSON is missing from or differs from the repo, post it as a commit comment so it
+      # can be committed (artifact downloads are not reachable from the agent sandbox). Runs
+      # before "Summarize failure" so a failure summary stays the newest comment.
+      - name: Report Room schema drift
+        if: always()
+        run: |
+          if [ -d app/schemas ] && [ -n "$(git status --porcelain -- app/schemas)" ]; then
+            python3 - <<'PY' > schema.md
+          import glob
+          out = ["## Room schema drift", "", "Generated schema not committed yet:", ""]
+          for f in sorted(glob.glob("app/schemas/**/*.json", recursive=True)):
+              out += [f"### `{f}`", "```json", open(f).read().rstrip(), "```"]
+          print("\n".join(out)[:60000])
+          PY
+            jq -Rs '{body: .}' schema.md > schema_payload.json
+            curl -sS -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+              -d @schema_payload.json > /dev/null
+          fi
+
+      - name: Summarize failure
+        if: failure()
+        run: |
+          python3 - <<'PY' > failure.md
+          import glob, re, xml.etree.ElementTree as ET
+          out = ["## CI failure", ""]
+          log = open("build.log", errors="replace").read().splitlines() if __import__("os").path.exists("build.log") else []
+          errs = [l for l in log if re.match(r"^(e: |w: .*error|> |FAILURE|\* What went wrong|.*FAILED$|Execution failed|.*Exception)", l)]
+          out.append("### Log errors")
+          out.append("```")
+          out += errs[:200]
+          out.append("```")
+          fails = []
+          for f in glob.glob("**/build/test-results/**/*.xml", recursive=True):
+              try:
+                  root = ET.parse(f).getroot()
+              except Exception:
+                  continue
+              for tc in root.iter("testcase"):
+                  for tag in ("failure", "error"):
+                      el = tc.find(tag)
+                      if el is not None:
+                          msg = (el.get("message") or "")[:300]
+                          body = (el.text or "").strip().splitlines()[:8]
+                          fails.append(f"- {tc.get('classname')}.{tc.get('name')}: {msg}\n  " + "\n  ".join(body))
+          out.append(f"### Failing tests ({len(fails)})")
+          out += fails[:80]
+          lint = glob.glob("app/build/reports/lint-results-debug.txt")
+          if lint:
+              out.append("### Lint")
+              out.append("```")
+              out += open(lint[0], errors="replace").read().splitlines()[:150]
+              out.append("```")
+          out.append("### Log tail")
+          out.append("```")
+          out += log[-120:]
+          out.append("```")
+          print("\n".join(out)[:60000])
+          PY
+          jq -Rs '{body: .}' failure.md > payload.json
+          curl -sS -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+            -d @payload.json > /dev/null
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            build.log
+            app/schemas/**
+            **/build/reports/**
+            **/build/test-results/**
+          retention-days: 7
+
+  # End-to-end tests on emulators: real alarms, real full-screen intents over the lock screen,
+  # DND, time zone, calendar provider, process death. Runs next to `build` (does not block it).
+  instrumented:
+    name: instrumented (API ${{ matrix.api }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # Not cancelled by newer pushes (frequent on a shared branch, and an emulator run takes
+    # ~15 min): a newer push's emulator job waits for this one, and only the newest waits.
+    concurrency:
+      group: e2e-${{ github.ref }}-${{ matrix.api }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [34, 35]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build app and test APKs
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee build.log
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ matrix.api }}-google_apis-x86_64-v1
+
+      - name: Create AVD snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          emulator-boot-timeout: 900
+          script: echo "AVD snapshot created"
+
+      - name: End-to-end tests
+        id: e2e
+        continue-on-error: true
+        timeout-minutes: 30
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: bash scripts/emulator-e2e.sh
+
+      # The emulator occasionally fails to boot on hosted runners. The test script drops a marker
+      # as its first action, so a failure without it is a boot failure: retry once, cold boot.
+      - name: End-to-end tests (retry after boot failure)
+        id: e2e_retry
+        if: steps.e2e.outcome == 'failure' && hashFiles('emulator-booted.marker') == ''
+        timeout-minutes: 30
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: bash scripts/emulator-e2e.sh
+
+      - name: Check end-to-end result
+        if: steps.e2e.outcome != 'success' && steps.e2e_retry.outcome != 'success'
+        run: |
+          echo "e2e: ${{ steps.e2e.outcome }}, retry: ${{ steps.e2e_retry.outcome }}"
+          exit 1
+
+      - name: Report results
+        if: always()
+        run: python3 scripts/e2e-report.py "API ${{ matrix.api }}" notice
+
+      - name: Summarize failure
+        if: failure()
+        run: |
+          python3 scripts/e2e-report.py "instrumented (API ${{ matrix.api }})" failure > failure.md
+          jq -Rs '{body: .}' failure.md > payload.json
+          curl -sS -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/comments" \
+            -d @payload.json > /dev/null
+
+      - name: Upload e2e reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-api-${{ matrix.api }}
+          path: |
+            build.log
+            e2e-out/**
+            app/build/outputs/androidTest-results/**
+            app/build/reports/androidTests/**
+          retention-days: 7
