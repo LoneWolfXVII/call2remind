@@ -46,6 +46,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import app.call2remind.ui.theme.C2RTheme
 import app.call2remind.ui.theme.Haptic
 import app.call2remind.ui.theme.rememberHaptics
@@ -173,7 +175,10 @@ fun UndoBar(
     val remaining = remember(key) { Animatable(1f) }
     val timeout by rememberUpdatedState(onTimeout)
     LaunchedEffect(key) {
-        remaining.animateTo(0f, tween(durationMs, easing = LinearEasing))
+        // The timer is a plain delay: with animations turned off the drain jumps, but the user
+        // still gets the full window to undo.
+        launch { remaining.animateTo(0f, tween(durationMs, easing = LinearEasing)) }
+        delay(durationMs.toLong())
         timeout()
     }
     val lamp = c.lamp

@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -50,6 +52,7 @@ import app.call2remind.ui.components.staggeredEntrance
 import app.call2remind.ui.format.localTimeText
 import app.call2remind.ui.ringtone.RingtoneTarget
 import app.call2remind.ui.theme.C2RTheme
+import kotlinx.coroutines.delay
 
 /** Where Settings sends the user. */
 @Immutable
@@ -323,6 +326,7 @@ fun SettingsScreen(state: SettingsUiState, nav: SettingsNav, actions: SettingsAc
 }
 
 private const val SNOOZE_SHEET = "snooze"
+private const val SNOOZE_CLOSE_DELAY_MS = 260L
 
 private fun dateOnlyTitle(type: SourceType): Int = when (type) {
     SourceType.CALENDAR -> R.string.settings_time_all_day
@@ -344,6 +348,13 @@ private fun dateOnlyBody(type: SourceType): Int = when (type) {
 @Composable
 private fun SnoozeChoice(current: Long, onPick: (Long) -> Unit) {
     val c = C2RTheme.colors
+    // Let the indicator finish its slide before the sheet goes.
+    var picked by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(picked) {
+        val value = picked ?: return@LaunchedEffect
+        delay(SNOOZE_CLOSE_DELAY_MS)
+        onPick(value)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(
             stringResource(R.string.settings_decline_snoozes),
@@ -354,8 +365,8 @@ private fun SnoozeChoice(current: Long, onPick: (Long) -> Unit) {
         Text(stringResource(R.string.settings_decline_snoozes_body), style = C2RTheme.type.body, color = c.muted)
         SegmentedControl(
             options = SettingsChoices.SNOOZE_MINUTES.map { stringResource(R.string.snooze_minutes, it) },
-            selectedIndex = SettingsChoices.SNOOZE_MINUTES.indexOf(current),
-            onSelect = { onPick(SettingsChoices.SNOOZE_MINUTES[it]) },
+            selectedIndex = SettingsChoices.SNOOZE_MINUTES.indexOf(picked ?: current),
+            onSelect = { picked = SettingsChoices.SNOOZE_MINUTES[it] },
             modifier = Modifier.testTag(SettingsTags.snoozeChoice(current)),
         )
         Spacer(Modifier.height(8.dp))
