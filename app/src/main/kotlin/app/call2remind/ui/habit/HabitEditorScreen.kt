@@ -39,9 +39,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -427,6 +429,7 @@ private fun Templates(selected: HabitTemplate?, onTemplate: (HabitTemplate, Stri
 
 @Composable
 private fun TitleField(value: String, onChange: (String) -> Unit, hasError: Boolean, modifier: Modifier = Modifier) {
+    val text = rememberSyncedText(value, HabitValidation.MAX_TITLE, onChange)
     val c = C2RTheme.colors
     val motion = C2RTheme.motion
     val interaction = remember { MutableInteractionSource() }
@@ -435,8 +438,8 @@ private fun TitleField(value: String, onChange: (String) -> Unit, hasError: Bool
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FieldLabel(stringResource(R.string.habit_title_label))
         BasicTextField(
-            value = value,
-            onValueChange = onChange,
+            value = text.text,
+            onValueChange = text::input,
             singleLine = true,
             textStyle = C2RTheme.type.cardTitle.copy(fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = c.ink),
             cursorBrush = SolidColor(c.ink),
@@ -556,19 +559,20 @@ private fun Times(
 
 @Composable
 private fun NotesField(value: String, onChange: (String) -> Unit) {
+    val text = rememberSyncedText(value, HabitEditorViewModel.MAX_NOTES, onChange)
     val c = C2RTheme.colors
     Column(Modifier.padding(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(stringResource(R.string.habit_notes), style = C2RTheme.type.rowTitle.copy(fontWeight = FontWeight.Medium), color = c.ink)
         BasicTextField(
-            value = value,
-            onValueChange = onChange,
+            value = text.text,
+            onValueChange = text::input,
             textStyle = C2RTheme.type.body.copy(color = c.ink),
             cursorBrush = SolidColor(c.ink),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             modifier = Modifier.fillMaxWidth(),
             decorationBox = { inner ->
                 Box(Modifier.fillMaxWidth().heightIn(min = 24.dp)) {
-                    if (value.isEmpty()) {
+                    if (text.text.isEmpty()) {
                         Text(stringResource(R.string.habit_notes_hint), style = C2RTheme.type.body, color = c.muted)
                     }
                     inner()
@@ -576,4 +580,48 @@ private fun NotesField(value: String, onChange: (String) -> Unit) {
             },
         )
     }
+}
+
+/**
+ * A text field's text held in Compose, so typing never waits on the view model's state round
+ * trip (which can lag a keystroke and drop or reorder characters). Every edit is still sent on;
+ * a value coming back that isn't one of ours (a template, the loaded habit) replaces the text.
+ */
+@Stable
+internal class SyncedText(initial: String, private val maxLength: Int, private val send: (String) -> Unit) {
+    var text by mutableStateOf(initial)
+        private set
+    private val sent = ArrayDeque<String>()
+
+    fun input(new: String) {
+        val clipped = new.take(maxLength)
+        text = clipped
+        sent.addLast(clipped)
+        if (sent.size > MAX_IN_FLIGHT) sent.removeFirst()
+        send(clipped)
+    }
+
+    /** The view model's value arrived: our own (possibly stale) echoes are ignored. */
+    fun external(value: String) {
+        when {
+            value == text -> sent.clear()
+            value in sent -> Unit
+            else -> {
+                text = value
+                sent.clear()
+            }
+        }
+    }
+
+    private companion object {
+        const val MAX_IN_FLIGHT = 64
+    }
+}
+
+@Composable
+internal fun rememberSyncedText(value: String, maxLength: Int, onChange: (String) -> Unit): SyncedText {
+    val current by rememberUpdatedState(onChange)
+    val synced = remember { SyncedText(value, maxLength) { current(it) } }
+    LaunchedEffect(value) { synced.external(value) }
+    return synced
 }

@@ -35,8 +35,10 @@ class HabitEditorViewModelTest {
         h.close()
     }
 
-    private fun editor(habitId: String? = null): HabitEditorViewModel {
-        val handle = SavedStateHandle(if (habitId == null) emptyMap() else mapOf(HabitEditorViewModel.ARG_HABIT_ID to habitId))
+    private fun editor(
+        habitId: String? = null,
+        handle: SavedStateHandle = SavedStateHandle(if (habitId == null) emptyMap() else mapOf(HabitEditorViewModel.ARG_HABIT_ID to habitId)),
+    ): HabitEditorViewModel {
         val vm = HabitEditorViewModel(handle, habits, FakeRingtoneCatalog(), h.clock, Dispatchers.IO, appScope)
         CoroutineScope(Dispatchers.Main).launch { vm.eventFlow.collect { events += it } }
         return vm
@@ -139,6 +141,58 @@ class HabitEditorViewModelTest {
         vm.delete()
         awaitUntil(message = "deleted") { events.contains(HabitEditorEvent.Deleted) }
         assertThat(runBlocking { habits.get(existing.id) }).isNull()
+    }
+
+    @Test
+    fun anUnsavedNewFormSurvivesProcessDeath() {
+        val handle = SavedStateHandle()
+        val first = editor(handle = handle)
+        first.applyTemplate(HabitTemplate.GYM, "Gym")
+        first.setTitle("Leg day")
+        first.setInterval(2)
+        first.setNotes("Bring shoes")
+
+        val restored = editor(handle = handle).state.value
+
+        assertThat(restored.form).isEqualTo(first.state.value.form)
+        assertThat(restored.template).isEqualTo(HabitTemplate.GYM)
+        assertThat(restored.form.times).containsExactly(LocalTime.of(18, 30))
+    }
+
+    @Test
+    fun aRestoredEditKeepsTheUnsavedChangesOverTheStoredHabit() {
+        val existing = runBlocking {
+            habits.create("Walk", RecurrenceRule(setOf(DayOfWeek.MONDAY), setOf(LocalTime.of(7, 0)), LocalDate.of(2026, 2, 2)))
+        }
+        val handle = SavedStateHandle(mapOf(HabitEditorViewModel.ARG_HABIT_ID to existing.id))
+        val first = editor(existing.id, handle)
+        awaitUntil(message = "loaded") { !first.state.value.loading }
+        first.setTitle("Long walk")
+
+        val second = editor(existing.id, handle)
+        awaitUntil(message = "reloaded") { !second.state.value.loading }
+
+        assertThat(second.state.value.isNew).isFalse()
+        assertThat(second.state.value.form.title).isEqualTo("Long walk")
+    }
+
+    @Test
+    fun syncedTextIgnoresItsOwnStaleEchoesButTakesExternalChanges() {
+        val sent = mutableListOf<String>()
+        val text = SyncedText("", maxLength = 5) { sent += it }
+
+        text.input("a")
+        text.input("ab")
+        text.input("abc")
+        text.external("a") // a stale echo of our own keystroke
+        assertThat(text.text).isEqualTo("abc")
+        text.external("abc")
+        text.external("Gym") // a template
+        assertThat(text.text).isEqualTo("Gym")
+        text.input("Gym day!")
+
+        assertThat(text.text).isEqualTo("Gym d")
+        assertThat(sent).containsExactly("a", "ab", "abc", "Gym d").inOrder()
     }
 
     @Test

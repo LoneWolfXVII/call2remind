@@ -88,7 +88,7 @@ sealed interface HabitEditorEvent {
  */
 @HiltViewModel
 class HabitEditorViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
     private val habits: HabitRepository,
     private val catalog: RingtoneCatalog,
     private val clock: Clock,
@@ -98,7 +98,17 @@ class HabitEditorViewModel @Inject constructor(
     private val habitId: String? = savedStateHandle[ARG_HABIT_ID]
     private var original: Habit? = null
 
-    private val _state = MutableStateFlow(HabitEditorUiState(loading = habitId != null, isNew = habitId == null, form = newForm()))
+    /** The form as the user left it, if the process was recreated mid-edit. */
+    private val restored: HabitForm? = HabitFormSaver.restore(savedStateHandle)
+
+    private val _state = MutableStateFlow(
+        HabitEditorUiState(
+            loading = habitId != null,
+            isNew = habitId == null,
+            form = restored ?: newForm(),
+            template = savedStateHandle.get<String>(KEY_TEMPLATE)?.let { name -> HabitTemplate.entries.firstOrNull { it.name == name } },
+        ),
+    )
     val state: StateFlow<HabitEditorUiState> = _state.asStateFlow()
 
     private val events = Channel<HabitEditorEvent>(Channel.BUFFERED)
@@ -111,6 +121,10 @@ class HabitEditorViewModel @Inject constructor(
                 original = habit
                 if (habit == null) {
                     _state.update { it.copy(loading = false, isNew = true) }
+                } else if (restored != null) {
+                    // Keep the user's unsaved edits; the stored habit is only the base for saving.
+                    _state.update { it.copy(loading = false) }
+                    loadRingtoneTitle(restored.ringtoneUri)
                 } else {
                     _state.update {
                         it.copy(
@@ -126,10 +140,17 @@ class HabitEditorViewModel @Inject constructor(
                             ),
                         )
                     }
+                    persist()
                     loadRingtoneTitle(habit.ringtoneUri)
                 }
             }
         }
+    }
+
+    private fun persist() {
+        val current = _state.value
+        HabitFormSaver.save(savedStateHandle, current.form)
+        savedStateHandle[KEY_TEMPLATE] = current.template?.name
     }
 
     private fun newForm(): HabitForm {
@@ -140,6 +161,7 @@ class HabitEditorViewModel @Inject constructor(
 
     private fun edit(transform: (HabitForm) -> HabitForm) {
         _state.update { it.copy(form = transform(it.form)) }
+        persist()
     }
 
     fun setTitle(title: String) = edit { it.copy(title = title.take(HabitValidation.MAX_TITLE)) }
@@ -176,6 +198,7 @@ class HabitEditorViewModel @Inject constructor(
                 form = it.form.copy(title = title, days = template.days, times = template.times.sorted()),
             )
         }
+        persist()
     }
 
     /** Validates; on success stores the habit (replanning its alarms) and emits [HabitEditorEvent.Saved]. */
@@ -240,5 +263,42 @@ class HabitEditorViewModel @Inject constructor(
     companion object {
         const val ARG_HABIT_ID = "habitId"
         const val MAX_NOTES = 300
+        private const val KEY_TEMPLATE = "habit_form_template"
+    }
+}
+
+/** [HabitForm] in a [SavedStateHandle] as bundle-safe primitives (survives process death). */
+internal object HabitFormSaver {
+    private const val KEY_SAVED = "habit_form_saved"
+    private const val KEY_TITLE = "habit_form_title"
+    private const val KEY_DAYS = "habit_form_days"
+    private const val KEY_TIMES = "habit_form_times"
+    private const val KEY_INTERVAL = "habit_form_interval"
+    private const val KEY_RINGTONE = "habit_form_ringtone"
+    private const val KEY_TTS = "habit_form_tts"
+    private const val KEY_NOTES = "habit_form_notes"
+
+    fun save(handle: SavedStateHandle, form: HabitForm) {
+        handle[KEY_TITLE] = form.title
+        handle[KEY_DAYS] = form.days.map { it.value }.sorted().toIntArray()
+        handle[KEY_TIMES] = form.times.map { it.toSecondOfDay() }.toIntArray()
+        handle[KEY_INTERVAL] = form.intervalWeeks
+        handle[KEY_RINGTONE] = form.ringtoneUri
+        handle[KEY_TTS] = form.ttsEnabled
+        handle[KEY_NOTES] = form.notes
+        handle[KEY_SAVED] = true
+    }
+
+    fun restore(handle: SavedStateHandle): HabitForm? {
+        if (handle.get<Boolean>(KEY_SAVED) != true) return null
+        return HabitForm(
+            title = handle.get<String>(KEY_TITLE).orEmpty(),
+            days = handle.get<IntArray>(KEY_DAYS)?.map { DayOfWeek.of(it) }?.toSet().orEmpty(),
+            times = handle.get<IntArray>(KEY_TIMES)?.map { LocalTime.ofSecondOfDay(it.toLong()) }?.sorted().orEmpty(),
+            intervalWeeks = handle.get<Int>(KEY_INTERVAL) ?: 1,
+            ringtoneUri = handle.get<String>(KEY_RINGTONE),
+            ttsEnabled = handle.get<Boolean>(KEY_TTS) ?: true,
+            notes = handle.get<String>(KEY_NOTES).orEmpty(),
+        )
     }
 }
