@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
@@ -206,7 +207,9 @@ private fun Wheel(
             .width(width)
             .height(ITEM_HEIGHT * 3)
             .testTag(tag)
-            .semantics {
+            // One screen-reader stop per wheel (the visible numbers are cleared below), so the
+            // earlier / later actions sit on the node TalkBack actually focuses.
+            .semantics(mergeDescendants = true) {
                 contentDescription = description
                 stateDescription = valueText
                 customActions = listOf(
@@ -227,6 +230,7 @@ private fun Wheel(
                 Modifier
                     .height(ITEM_HEIGHT)
                     .fillMaxWidth()
+                    .clearAndSetSemantics {}
                     .graphicsLayer {
                         val position = state.firstVisibleItemIndex + state.firstVisibleItemScrollOffset / itemPx
                         val distance = abs(index - position).coerceAtMost(1.6f)
