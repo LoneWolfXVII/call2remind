@@ -77,7 +77,7 @@ class DetailScreenTest {
         show(stateFor(SourceType.CALENDAR, Schedule.At(T0.plus(minutes(30)))))
 
         rule.onNodeWithText(context.getString(R.string.detail_next_ring_today)).assertIsDisplayed()
-        rule.onNodeWithText(context.getString(R.string.detail_decline_ringback, 5L, 3)).assertIsDisplayed()
+        rule.onNodeWithText(context.getString(R.string.detail_decline_ringback, context.getString(R.string.snooze_minutes, 5L), 3)).assertIsDisplayed()
         rule.onNodeWithText(context.getString(R.string.detail_synced_notice, context.getString(R.string.source_calendar), "3 min ago"))
             .performScrollTo()
             .assertIsDisplayed()
