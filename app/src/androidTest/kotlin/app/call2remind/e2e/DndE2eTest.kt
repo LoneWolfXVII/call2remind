@@ -58,7 +58,8 @@ class DndE2eTest {
         assertWithMessage("one-time DND hint notification").that(
             Waits.within(10_000) { AppDriver.dndHintNotification() != null },
         ).isTrue()
-        assertThat(AppDriver.settings().onboarding.dndHintShown).isTrue()
+        // The service posts the hint, then records it in settings: wait for the write.
+        Waits.until("DND hint recorded as shown", 5_000) { AppDriver.settings().onboarding.dndHintShown }
         assertWithMessage("no ringtone playing under total silence").that(alarmPlayers()).isEqualTo(0)
         e2eLog("vibrations: " + Device.shell("dumpsys vibrator_manager").lines().filter { it.contains("app.call2remind") }.take(5))
 
