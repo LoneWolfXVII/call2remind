@@ -14,16 +14,26 @@ import kotlinx.coroutines.delay
 
 /**
  * One orchestrated entrance: the element rises [distance] and fades in on the default spring,
- * [index] × 30 ms after [key] changes (or first composition). Reduced motion: shown at once.
+ * [index] × [staggerMs] after [key] changes (or first composition). Reduced motion: shown at once.
  * Runs in the graphics layer only (no relayout).
+ *
+ * [enabled] is read once, when the element first enters the composition: an element composed
+ * while it is false (e.g. a list row scrolled into view after the first load) appears without
+ * an entrance, so the orchestrated moment happens once and never replays on scroll.
  */
 @Composable
-fun Modifier.staggeredEntrance(index: Int, key: Any? = Unit, distance: Dp = 16.dp): Modifier {
+fun Modifier.staggeredEntrance(
+    index: Int,
+    key: Any? = Unit,
+    distance: Dp = 16.dp,
+    staggerMs: Long = C2RMotion.STAGGER_MS,
+    enabled: Boolean = true,
+): Modifier {
     val motion = C2RTheme.motion
-    val progress = remember(key) { Animatable(if (motion.reduced) 1f else 0f) }
+    val progress = remember(key) { Animatable(if (motion.reduced || !enabled) 1f else 0f) }
     LaunchedEffect(key) {
         if (progress.value < 1f) {
-            delay(index * C2RMotion.STAGGER_MS)
+            delay(index * staggerMs)
             progress.animateTo(1f, motion.default())
         }
     }

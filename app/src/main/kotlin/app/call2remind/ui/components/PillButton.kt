@@ -52,6 +52,12 @@ enum class PillStyle {
 
     /** Text only on the panel ("Read it again"). */
     OnPanelGhost,
+
+    /** Missed-red fill, surface text: the one destructive confirmation ("Delete habit"). */
+    Danger,
+
+    /** Missed-red text only: a destructive action that asks for confirmation first. */
+    DangerGhost,
 }
 
 @Immutable
@@ -67,6 +73,8 @@ private fun PillStyle.colors(): PillColors {
         PillStyle.Ghost -> PillColors(Color.Transparent, c.ink, null)
         PillStyle.OnPanelOutline -> PillColors(Color.Transparent, c.onPanel, c.onPanelOutline)
         PillStyle.OnPanelGhost -> PillColors(Color.Transparent, c.onPanel, null)
+        PillStyle.Danger -> PillColors(c.missed, c.surface, null)
+        PillStyle.DangerGhost -> PillColors(Color.Transparent, c.missed, null)
     }
 }
 

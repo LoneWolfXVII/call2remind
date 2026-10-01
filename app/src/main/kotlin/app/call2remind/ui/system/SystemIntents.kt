@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -12,6 +13,7 @@ import android.provider.CalendarContract
 import android.provider.ContactsContract
 import android.provider.Settings
 import android.util.Log
+import app.call2remind.core.model.Reminder
 import app.call2remind.core.model.SourceType
 import java.time.Instant
 
@@ -88,6 +90,37 @@ object SystemIntents {
         SourceType.MS_TODO -> listOf(launcher("com.microsoft.todos"))
         SourceType.BIRTHDAY -> listOf(Intent(Intent.ACTION_VIEW, ContactsContract.Contacts.CONTENT_URI))
         SourceType.HABIT -> emptyList()
+    }
+
+    /**
+     * Opens [reminder] where it can be edited: the exact calendar event (its instance's begin time
+     * in the extras), otherwise the source app ([openSource]).
+     */
+    fun editReminder(reminder: Reminder, at: Instant?): List<Intent> = when (reminder.sourceType) {
+        SourceType.CALENDAR -> {
+            // Calendar external ids are "<eventId>:<instanceBeginMillis>".
+            val eventId = reminder.externalId.substringBefore(':').toLongOrNull()
+            val begin = reminder.externalId.substringAfter(':', "").toLongOrNull()
+            listOfNotNull(
+                eventId?.let { id ->
+                    Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id)).apply {
+                        if (begin != null) putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin)
+                    }
+                },
+            ) + openSource(SourceType.CALENDAR, at)
+        }
+        else -> openSource(reminder.sourceType, at)
+    }
+
+    /** Notification access for the Samsung Reminders listener (the app's own row where supported). */
+    fun notificationListener(component: ComponentName): List<Intent> = buildList {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            add(
+                Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                    .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, component.flattenToString()),
+            )
+        }
+        add(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
     }
 
     /** Starts the first of [candidates] that resolves. Returns false if none did. */

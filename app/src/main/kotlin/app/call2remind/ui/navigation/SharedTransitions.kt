@@ -65,3 +65,24 @@ fun Modifier.sharedElementIfAvailable(key: Any): Modifier {
         )
     }
 }
+
+/**
+ * Shared bounds for text that changes size between screens (a row title → the Detail headline):
+ * both renderings cross-fade while being scaled to the animating bounds, so the words appear to
+ * fly and grow instead of re-flowing. No-op outside the NavHost.
+ */
+@Composable
+fun Modifier.sharedTextIfAvailable(key: Any): Modifier {
+    val shared = LocalSharedTransitionScope.current ?: return this
+    val visibility = LocalNavAnimatedVisibilityScope.current ?: return this
+    return with(shared) {
+        this@sharedTextIfAvailable
+            .sharedBounds(
+                rememberSharedContentState(key),
+                visibility,
+                boundsTransform = C2RBoundsTransform,
+                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds(),
+            )
+            .skipToLookaheadSize()
+    }
+}
