@@ -20,7 +20,9 @@
     <string name="missed_ring_again">Calling again at %1$s</string>
     <string name="missed_gave_up">You missed this reminder</string>
     <string name="dnd_hint_title">Calls are silent in Do Not Disturb</string>
-    <string name="dnd_hint_text">Reminder calls vibrate and show on screen while Do Not Disturb blocks all sound.</string>
+    <string name="dnd_hint_text">While Do Not Disturb blocks alarms, Android won\'t let a reminder call ring, vibrate or open full screen. It waits silently in your notifications with Answer, Snooze and Done.</string>
+    <string name="dnd_ring_title">Reminder: %1$s</string>
+    <string name="dnd_ring_text">Silenced by Do Not Disturb</string>
 
     <string name="action_answer">Answer</string>
     <string name="action_decline">Decline</string>

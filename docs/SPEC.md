@@ -25,7 +25,20 @@ Source of truth for product decisions: the "Call Reminder App — Spec" doc (cla
 - Ringtone: looping `MediaPlayer` on `USAGE_ALARM` + vibration; per-source override. Ring **45 s** then auto-snooze + "missed reminder" notification.
 - Accept → stop ring, TTS "Reminder: <title>. <time or notes>", then Done / Snooze / Open in source app.
 - Decline = snooze 5 min (10 / 15 / custom). **Max 3 ring-backs**, then missed.
-- Edge cases: locked (over keyguard); DND total silence → vibrate + silent full-screen + one-time hint; already in a call (`AudioManager.mode`) → silent heads-up and ring when call ends; app in foreground → in-app overlay; missed on boot: overdue < 2 h rings, older → missed; two at once → queue.
+
+### Edge cases
+| Situation | Behaviour |
+|---|---|
+| Phone locked | Full-screen call over the keyguard (`setShowWhenLocked`, `setTurnScreenOn`). |
+| DND priority / alarms-only (alarms allowed) | Rings normally: the ringing notification is `CATEGORY_ALARM` on a `USAGE_ALARM` channel, the ringtone is `USAGE_ALARM`. |
+| DND total silence, or a priority policy that excludes alarms | Android suppresses the full-screen intent and drops alarm sound **and** vibration, so there is no "call". The ring is a silent, high-priority, non-insistent **"Reminder: \<title\>"** notification (no full-screen intent) with **Answer / Snooze / Done** actions; it waits in the shade and on the lock screen until the user wakes the phone. No ringtone, no vibration (the platform would ignore it). The occurrence is RINGING as usual and times out into a ring-back / missed like any ring. One-time hint notification explains this. |
+| Already in a phone call (`AudioManager.mode`) | Silent heads-up now; rings when the call ends. |
+| App in foreground, screen on | In-app overlay instead of the full-screen activity. |
+| No full-screen intent permission (Android 14+) | Heads-up CallStyle notification + ringtone from the foreground service. |
+| Missed while off (boot) | Overdue < 2 h rings; older → missed. |
+| Two due at once | Queue: earliest first; ties ring meetings, then tasks, habits, birthdays. |
+| Time zone change (travel) | Device-zone reminders keep their **local wall time**: all-day events, Google Tasks due dates, birthdays and (switch `DeviceZonePolicy.HABITS_FOLLOW_DEVICE_ZONE`, default on) habits are moved to the new zone by the replan that runs in the TIMEZONE_CHANGED receiver; a forced re-sync (WorkManager `REPLACE`) follows. MS To Do keeps its explicit zone; timed events are instants. SNOOZED / RINGING occurrences are kept as they are. |
+| Sub-minute snooze length | Labels show seconds ("Snooze 30 s"); partial minutes round up. Never "0 min". |
 
 ## Architecture
 - Modules: `:core` (pure Kotlin, all logic that doesn't need Android — fully unit-tested) and `:app` (Android).
@@ -46,7 +59,7 @@ Source of truth for product decisions: the "Call Reminder App — Spec" doc (cla
 - Exactly-once ring: DB ringing lock shared by alarm, watchdog, Samsung listener.
 - FGS start failure (`ForegroundServiceStartNotAllowedException`) → high-priority CallStyle notification with sound.
 - Sync: incremental, exponential backoff + jitter, token refresh, offline-first.
-- Time: instants in UTC + source zone; tests for DST, zone travel, month-end recurrences.
+- Time: instants in UTC + source zone; tests for DST, zone travel, month-end recurrences. The app clock reads the device zone at every call (`DeviceClock`), never a zone frozen at process start; `DeviceZonePolicy` decides which reminders follow the device zone.
 - Tokens in Keystore-backed storage. No analytics.
 - Local ring log (fired/answered/snoozed/missed + reason) for a debug screen.
 

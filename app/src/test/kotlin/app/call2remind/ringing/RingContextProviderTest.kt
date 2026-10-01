@@ -81,7 +81,7 @@ class RingContextProviderTest {
         // …but a priority policy that excludes alarms silences us like total silence.
         notifications.notificationPolicy = NotificationManager.Policy(NotificationManager.Policy.PRIORITY_CATEGORY_CALLS, 0, 0)
         assertThat(provider.current().dndTotalSilence).isTrue()
-        assertThat(RingDecision.decide(provider.current())).isEqualTo(RingMode.SILENT_FULL_SCREEN_VIBRATE)
+        assertThat(RingDecision.decide(provider.current())).isEqualTo(RingMode.DND_SILENT_NOTIFICATION)
 
         notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
         assertThat(provider.current().dndTotalSilence).isFalse()
@@ -89,7 +89,7 @@ class RingContextProviderTest {
         notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
         val ringContext = provider.current()
         assertThat(ringContext.dndTotalSilence).isTrue()
-        assertThat(RingDecision.decide(ringContext)).isEqualTo(RingMode.SILENT_FULL_SCREEN_VIBRATE)
+        assertThat(RingDecision.decide(ringContext)).isEqualTo(RingMode.DND_SILENT_NOTIFICATION)
     }
 
     @Test

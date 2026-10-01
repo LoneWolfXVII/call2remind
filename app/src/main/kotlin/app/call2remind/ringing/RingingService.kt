@@ -42,6 +42,8 @@ import javax.inject.Inject
  *    [RingDecision], looping ringtone / vibration, auto [OccurrenceEvent.RingTimeout] after the
  *    policy's ring timeout. Each occurrence rings under its own notification id
  *    ([RingNotifications.ringId]), so a queued call alerts (heads-up / full-screen) afresh.
+ *    While DND blocks alarms the ring is a silent "Reminder: <title>" notification with Answer /
+ *    Snooze / Done instead ([RingMode.DND_SILENT_NOTIFICATION]), without sound or vibration.
  * 2. It observes the occurrence in Room: once answered it stops the alerts, switches to an
  *    ongoing-call notification and speaks the reminder (TTS); once it leaves RINGING (done,
  *    snoozed, missed…) it ends the ring and runs the ring queue ([SchedulingEngine.claimNext]) —
@@ -159,7 +161,7 @@ class RingingService : LifecycleService() {
             val title = reminder?.title?.takeIf { it.isNotBlank() } ?: initialTitle
             promoteIncoming(id, title, mode)
             if (mode == RingMode.IN_APP_OVERLAY) showCallScreen(id)
-            if (mode == RingMode.SILENT_FULL_SCREEN_VIBRATE) maybeShowDndHint(settings)
+            if (mode == RingMode.DND_SILENT_NOTIFICATION) maybeShowDndHint(settings)
             alerts.start(
                 ringtoneUri = reminder?.let(settings::ringtoneFor) ?: settings.defaultRingtoneUri,
                 sound = RingDecision.soundAllowed(ringContext),
@@ -261,6 +263,12 @@ class RingingService : LifecycleService() {
     }
 
     private fun promoteIncoming(id: String, title: String, mode: RingMode) {
+        if (mode == RingMode.DND_SILENT_NOTIFICATION) {
+            // No CallStyle: valid outside a foreground service as it is.
+            val silent = notifications.dndSilentRing(id, title)
+            promote(Shown(notifications.ringId(id), silent) { silent })
+            return
+        }
         promote(
             Shown(notifications.ringId(id), notifications.incomingCall(id, title, mode)) {
                 // Outside a foreground service a CallStyle notification needs a full-screen intent.

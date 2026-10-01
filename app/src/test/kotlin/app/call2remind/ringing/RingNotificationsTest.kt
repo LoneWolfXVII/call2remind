@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.NotificationChannel
 import android.app.PendingIntent
 import android.media.AudioAttributes
+import androidx.core.app.NotificationCompat
 import androidx.test.core.app.ApplicationProvider
 import app.call2remind.core.model.OccurrenceState
 import app.call2remind.core.model.Schedule
@@ -113,7 +114,6 @@ class RingNotificationsTest {
     @Test
     fun degradedModeHasNoFullScreenIntentButFallbackAlwaysDoes() {
         assertThat(notifications.incomingCall(occ.id, "x", RingMode.HEADS_UP_DEGRADED).fullScreenIntent).isNull()
-        assertThat(notifications.incomingCall(occ.id, "x", RingMode.SILENT_FULL_SCREEN_VIBRATE).fullScreenIntent).isNotNull()
 
         val fallback = notifications.incomingCall(occ.id, "x", RingMode.HEADS_UP_DEGRADED, fallback = true)
         assertThat(fallback.fullScreenIntent).isNotNull()
@@ -149,6 +149,38 @@ class RingNotificationsTest {
     fun blankTitlesUseTheFallbackTitle() {
         val notification = notifications.incomingCall(occ.id, "  ", RingMode.FULL_SCREEN)
         assertThat(notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString()).isEqualTo("Reminder")
+    }
+
+    @Test
+    fun dndSilentRingIsAnHonestSilentReminderWithAnswerSnoozeAndDone() {
+        val notification = notifications.dndSilentRing(occ.id, "Pay rent")
+
+        assertThat(notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString()).isEqualTo("Reminder: Pay rent")
+        assertThat(notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString()).isEqualTo("Silenced by Do Not Disturb")
+        // Not a call: no CallStyle and no full-screen intent (the platform would suppress it).
+        assertThat(notification.extras.getString(Notification.EXTRA_TEMPLATE)).isNotEqualTo(Notification.CallStyle::class.java.name)
+        assertThat(notification.fullScreenIntent).isNull()
+        assertThat(notification.flags and Notification.FLAG_INSISTENT).isEqualTo(0)
+        assertThat(notification.flags and Notification.FLAG_ONGOING_EVENT).isNotEqualTo(0)
+        assertThat(notification.channelId).isEqualTo(RingNotifications.CHANNEL_CALLS)
+        assertThat(notification.category).isEqualTo(Notification.CATEGORY_ALARM)
+        assertThat(notification.priority).isEqualTo(NotificationCompat.PRIORITY_HIGH)
+        assertThat(notification.visibility).isEqualTo(Notification.VISIBILITY_PUBLIC)
+
+        val actions = notification.actions.orEmpty()
+        assertThat(actions.map { it.title.toString() }).containsExactly("Answer", "Snooze", "Done").inOrder()
+        val answer = shadowOf(actions[0].actionIntent)
+        assertThat(answer.isActivity).isTrue()
+        assertThat(answer.savedIntent.action).isEqualTo(IncomingCallActivity.ACTION_ANSWER)
+        assertThat(answer.savedIntent.getStringExtra(IncomingCallActivity.EXTRA_OCCURRENCE_ID)).isEqualTo(occ.id)
+        for ((action, expected) in actions.drop(1).zip(listOf(CallActionReceiver.ACTION_SNOOZE, CallActionReceiver.ACTION_DONE))) {
+            val intent = shadowOf(action.actionIntent).savedIntent
+            assertThat(intent.action).isEqualTo(expected)
+            assertThat(intent.getStringExtra(CallActionReceiver.EXTRA_OCCURRENCE_ID)).isEqualTo(occ.id)
+        }
+        assertThat(shadowOf(notification.contentIntent).savedIntent.action).isEqualTo(IncomingCallActivity.ACTION_SHOW)
+        assertThat(notifications.dndSilentRing(occ.id, " ").extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+            .isEqualTo("Reminder: Reminder")
     }
 
     @Test

@@ -130,6 +130,37 @@ class RingNotifications @Inject constructor(
     }
 
     /**
+     * The ring while Do Not Disturb blocks alarms ([RingMode.DND_SILENT_NOTIFICATION]).
+     *
+     * Android suppresses a full-screen intent under total silence, and drops alarm sound and
+     * vibration, so a CallStyle "call" would promise something that never appears. Instead this is
+     * a plain, silent, high-priority "Reminder: <title>" notification with Answer (opens the call
+     * screen answered), Snooze (default length) and Done, which the system keeps in the shade and
+     * on the lock screen until the user wakes the phone. No full-screen intent, not insistent,
+     * `CATEGORY_ALARM` (see the class doc); valid inside and outside a foreground service.
+     */
+    fun dndSilentRing(occurrenceId: String, title: String): Notification {
+        val name = title.ifBlank { context.getString(R.string.reminder_fallback_title) }
+        return NotificationCompat.Builder(context, CHANNEL_CALLS)
+            .setSmallIcon(R.drawable.ic_stat_call)
+            .setContentTitle(context.getString(R.string.dnd_ring_title, name))
+            .setContentText(context.getString(R.string.dnd_ring_text))
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(callScreenIntent(occurrenceId, answer = false))
+            .addAction(0, context.getString(R.string.action_answer), callScreenIntent(occurrenceId, answer = true))
+            .addAction(0, context.getString(R.string.action_snooze), actionIntent(occurrenceId, CallActionReceiver.ACTION_SNOOZE))
+            .addAction(0, context.getString(R.string.action_done), actionIntent(occurrenceId, CallActionReceiver.ACTION_DONE))
+            .build()
+            .asAlarm()
+    }
+
+    /**
      * After Answer: ongoing-call style with hang-up = Done, plus Snooze. With [callStyle] false
      * (posted outside a foreground service, where an ongoing CallStyle is not allowed) it is a
      * plain notification with Done and Snooze actions.
@@ -194,7 +225,7 @@ class RingNotifications @Inject constructor(
             .build()
     }
 
-    /** One-time hint that calls are silent while DND blocks everything. */
+    /** One-time hint that calls arrive as silent notifications while DND blocks alarms. */
     fun dndHint(): Notification = NotificationCompat.Builder(context, CHANNEL_HINTS)
         .setSmallIcon(R.drawable.ic_stat_call)
         .setContentTitle(context.getString(R.string.dnd_hint_title))

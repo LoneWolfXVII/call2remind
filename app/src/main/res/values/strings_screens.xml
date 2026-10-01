@@ -95,7 +95,7 @@
     <string name="detail_voice_off">Nothing. The voice is off, it just rings.</string>
     <string name="detail_voice_generic">The title, then the time.</string>
     <string name="detail_if_declined">If you decline</string>
-    <string name="detail_decline_ringback">Rings back in %1$d min, up to %2$d times</string>
+    <string name="detail_decline_ringback">Rings back in %1$s, up to %2$d times</string>
     <string name="detail_decline_missed">Goes straight to Missed</string>
     <string name="detail_ringtone">Ringtone</string>
     <string name="detail_ringtone_default">%1$s, the app default</string>
@@ -280,7 +280,7 @@
     <string name="settings_in_call">During a phone call</string>
     <string name="settings_in_call_hint">A quiet banner now, it rings after you hang up</string>
     <string name="settings_dnd">Do Not Disturb</string>
-    <string name="settings_dnd_hint">Vibrates and shows the call without sound</string>
+    <string name="settings_dnd_hint">When it blocks alarms, calls arrive as a silent notification</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_theme">Theme</string>
     <string name="settings_theme_system">System</string>

@@ -58,12 +58,19 @@ class RingDecisionTest {
     }
 
     @Test
-    fun dndTotalSilenceIsSilentFullScreenWithVibration() {
+    fun dndTotalSilenceIsASilentNotificationWithoutSoundOrVibration() {
         val context = ctx(dnd = true)
 
-        assertThat(RingDecision.decide(context)).isEqualTo(RingMode.SILENT_FULL_SCREEN_VIBRATE)
+        assertThat(RingDecision.decide(context)).isEqualTo(RingMode.DND_SILENT_NOTIFICATION)
         assertThat(RingDecision.soundAllowed(context)).isFalse()
-        assertThat(RingDecision.vibrationAllowed(context)).isTrue()
+        assertThat(RingDecision.vibrationAllowed(context)).isFalse()
+    }
+
+    @Test
+    fun vibrationOnlyWhenNeitherACallNorDndBlocksIt() {
+        all.forEach {
+            assertThat(RingDecision.vibrationAllowed(it)).isEqualTo(!it.inRealCall && !it.dndTotalSilence)
+        }
     }
 
     @Test
@@ -81,7 +88,7 @@ class RingDecisionTest {
         assertThat(counts).containsEntry(RingMode.DEFER_UNTIL_CALL_ENDS, 16)
         assertThat(counts).containsEntry(RingMode.IN_APP_OVERLAY, 4)
         assertThat(counts).containsEntry(RingMode.HEADS_UP_DEGRADED, 6)
-        assertThat(counts).containsEntry(RingMode.SILENT_FULL_SCREEN_VIBRATE, 3)
+        assertThat(counts).containsEntry(RingMode.DND_SILENT_NOTIFICATION, 3)
         assertThat(counts).containsEntry(RingMode.FULL_SCREEN, 3)
     }
 }

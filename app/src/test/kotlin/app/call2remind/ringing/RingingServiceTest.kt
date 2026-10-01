@@ -201,16 +201,34 @@ class RingingServiceTest {
     }
 
     @Test
-    fun doNotDisturbRingsSilentlyWithVibrationAndShowsTheHintOnce() {
+    fun doNotDisturbRingsAsASilentReminderNotificationAndShowsTheHintOnce() {
         ringContext.context = FakeRingContextProvider.IDLE.copy(dndTotalSilence = true)
         val occ = dueOccurrence("a", "Pay rent")
 
         val (_, shadow) = ring(occ, "Pay rent")
 
-        assertThat(alerts.active).isEqualTo(FakeRingAlerts.Start(ringtoneUri = null, sound = false, vibrate = true))
-        assertThat(shadow.lastForegroundNotification?.fullScreenIntent).isNotNull()
+        // DND drops alarm sound and vibration: neither is attempted.
+        assertThat(alerts.active).isEqualTo(FakeRingAlerts.Start(ringtoneUri = null, sound = false, vibrate = false))
+        val notification = requireNotNull(shadow.lastForegroundNotification)
+        assertThat(shadow.lastForegroundNotificationId).isEqualTo(notifications.ringId(occ.id))
+        assertThat(notification.fullScreenIntent).isNull()
+        assertThat(notification.title).isEqualTo("Reminder: Pay rent")
+        assertThat(notification.actions.orEmpty().map { it.title.toString() }).containsExactly("Answer", "Snooze", "Done").inOrder()
+        assertThat(state(occ.id)?.state).isEqualTo(OccurrenceState.RINGING)
         assertThat(shadowOf(notificationManager).getNotification(RingNotifications.DND_HINT_ID)).isNotNull()
         assertThat(runBlocking { settings.current() }.onboarding.dndHintShown).isTrue()
+    }
+
+    @Test
+    fun doNotDisturbRingStillTimesOutLikeAnyRing() {
+        ringContext.context = FakeRingContextProvider.IDLE.copy(dndTotalSilence = true)
+        val occ = dueOccurrence("a", "Pay rent")
+        ring(occ, "Pay rent")
+
+        runBlocking { engine.handle(occ.id, OccurrenceEvent.RingTimeout) }
+
+        awaitUntil(message = "snoozed after the ring timed out") { state(occ.id)?.state == OccurrenceState.SNOOZED }
+        awaitUntil(message = "alerts stopped") { alerts.active == null }
     }
 
     @Test

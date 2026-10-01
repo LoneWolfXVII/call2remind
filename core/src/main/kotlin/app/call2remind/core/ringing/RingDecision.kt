@@ -11,8 +11,13 @@ enum class RingMode {
     /** Full-screen intents are not allowed: heads-up CallStyle notification + ringtone from the FGS. */
     HEADS_UP_DEGRADED,
 
-    /** DND total silence: full-screen call UI, vibration only, no sound (plus one-time hint). */
-    SILENT_FULL_SCREEN_VIBRATE,
+    /**
+     * DND blocks alarms (total silence): Android suppresses full-screen intents, sound and alarm
+     * vibration, so the ring is a silent, high-priority "Reminder: <title>" notification with
+     * Answer / Snooze / Done that waits in the shade (seen when the user wakes the phone), plus a
+     * one-time hint. The occurrence is RINGING as usual and times out like any other ring.
+     */
+    DND_SILENT_NOTIFICATION,
 
     /** The user is in a real phone call: silent heads-up now, ring when the call ends. */
     DEFER_UNTIL_CALL_ENDS,
@@ -40,7 +45,7 @@ data class RingContext(
  * 1. `inRealCall` → [RingMode.DEFER_UNTIL_CALL_ENDS] (never interrupt a real call).
  * 2. `appInForeground && screenInteractive` → [RingMode.IN_APP_OVERLAY].
  * 3. `!canUseFullScreenIntent` → [RingMode.HEADS_UP_DEGRADED].
- * 4. `dndTotalSilence` → [RingMode.SILENT_FULL_SCREEN_VIBRATE].
+ * 4. `dndTotalSilence` → [RingMode.DND_SILENT_NOTIFICATION].
  * 5. otherwise → [RingMode.FULL_SCREEN].
  *
  * Sound is decided separately by [soundAllowed] so DND is honoured in every mode.
@@ -52,13 +57,16 @@ object RingDecision {
         context.inRealCall -> RingMode.DEFER_UNTIL_CALL_ENDS
         context.appInForeground && context.screenInteractive -> RingMode.IN_APP_OVERLAY
         !context.canUseFullScreenIntent -> RingMode.HEADS_UP_DEGRADED
-        context.dndTotalSilence -> RingMode.SILENT_FULL_SCREEN_VIBRATE
+        context.dndTotalSilence -> RingMode.DND_SILENT_NOTIFICATION
         else -> RingMode.FULL_SCREEN
     }
 
     /** Whether the ringtone may play: never during a real call or DND total silence. */
     fun soundAllowed(context: RingContext): Boolean = !context.inRealCall && !context.dndTotalSilence
 
-    /** Whether vibration may be used: everywhere except during a real call. */
-    fun vibrationAllowed(context: RingContext): Boolean = !context.inRealCall
+    /**
+     * Whether to vibrate: not during a real call, and not while DND blocks alarms — the platform
+     * drops alarm vibration then (`ignored_app_ops`), so the ring does not pretend to vibrate.
+     */
+    fun vibrationAllowed(context: RingContext): Boolean = !context.inRealCall && !context.dndTotalSilence
 }
