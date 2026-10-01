@@ -47,7 +47,7 @@ class CollapsingHeaderState(initialFraction: Float = 0f) {
         private set
 
     val fraction: Float
-        get() = if (maxCollapsePx <= 0f) 0f else (-offsetPx / maxCollapsePx).coerceIn(0f, 1f)
+        get() = if (maxCollapsePx <= 0f || offsetPx >= 0f) 0f else (-offsetPx / maxCollapsePx).coerceIn(0f, 1f)
 
     /** True once the strip is mostly gone: the compact bar takes over (and the FAB shrinks). */
     val isCollapsed: Boolean by derivedStateOf { fraction >= COLLAPSED_AT }
