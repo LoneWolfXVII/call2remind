@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,8 +29,10 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.call2remind.ui.theme.C2RTheme
 import kotlin.math.abs
@@ -59,6 +61,7 @@ fun BottomNav(
         position.animateTo(selectedIndex.toFloat(), motion.playful(0.001f))
     }
     val lamp = c.lamp
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Box(
         modifier
             .fillMaxWidth()
@@ -68,7 +71,7 @@ fun BottomNav(
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(80.dp)
+                .heightIn(min = 80.dp)
                 .selectableGroup()
                 .drawBehind {
                     if (items.isEmpty()) return@drawBehind
@@ -76,7 +79,8 @@ fun BottomNav(
                     val remaining = abs(position.value - position.targetValue).coerceAtMost(1f)
                     val pillWidth = (64.dp + 28.dp * remaining).toPx()
                     val pillHeight = 32.dp.toPx()
-                    val centerX = itemWidth * (position.value + 0.5f)
+                    val fromStart = itemWidth * (position.value + 0.5f)
+                    val centerX = if (rtl) size.width - fromStart else fromStart
                     drawRoundRect(
                         color = lamp,
                         topLeft = Offset(centerX - pillWidth / 2f, 12.dp.toPx()),
@@ -90,7 +94,7 @@ fun BottomNav(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .height(80.dp)
+                        .heightIn(min = 80.dp)
                         .selectable(
                             selected = selected,
                             onClick = { onSelect(item) },

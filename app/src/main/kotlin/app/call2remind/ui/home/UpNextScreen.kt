@@ -396,7 +396,7 @@ private fun CompactNext(row: TimelineRow, header: CollapsingHeaderState, onClick
                 scaleY = s
                 transformOrigin = TransformOrigin(0f, 0.5f)
             }
-            .height(44.dp)
+            .heightIn(min = 48.dp)
             .background(c.panel, C2RTheme.shapes.pill)
             .clickable(interactionSource = null, indication = null, enabled = collapsed, onClickLabel = row.title, onClick = onClick)
             .testTag(UpNextTags.COMPACT)

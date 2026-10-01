@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
@@ -202,7 +202,7 @@ private fun SnoozeChip(value: String, detail: String, selected: Boolean, onClick
     Column(
         modifier = modifier
             .pressScale(interaction)
-            .height(76.dp)
+            .heightIn(min = 76.dp)
             .clip(C2RTheme.shapes.chip)
             .background(container)
             .selectable(selected = selected, interactionSource = interaction, indication = null, role = Role.RadioButton, onClick = onClick)

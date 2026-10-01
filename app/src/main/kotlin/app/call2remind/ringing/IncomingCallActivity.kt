@@ -13,6 +13,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -20,9 +21,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import app.call2remind.scheduling.AndroidAlarmScheduler
+import app.call2remind.settings.ThemeMode
 import app.call2remind.ui.call.CallActions
 import app.call2remind.ui.call.CallPresentationViewModel
 import app.call2remind.ui.call.CallScreen
+import app.call2remind.ui.navigation.AppViewModel
 import app.call2remind.ui.system.SystemIntents
 import app.call2remind.ui.theme.Call2RemindTheme
 import app.call2remind.ui.theme.LightColors
@@ -41,6 +44,7 @@ import kotlinx.coroutines.launch
 class IncomingCallActivity : ComponentActivity() {
     private val viewModel: IncomingCallViewModel by viewModels()
     private val presentationViewModel: CallPresentationViewModel by viewModels()
+    private val appViewModel: AppViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val panel = LightColors.panel.toArgb()
@@ -59,7 +63,14 @@ class IncomingCallActivity : ComponentActivity() {
         if (savedInstanceState == null) handleAnswer(intent)
         lifecycleScope.launch { preloadFonts(applicationContext) }
         setContent {
-            Call2RemindTheme {
+            // The in-app theme setting (Settings → Theme) applies here too, not just the system's.
+            val themeMode by appViewModel.theme.collectAsStateWithLifecycle()
+            val dark = when (themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            Call2RemindTheme(darkTheme = dark) {
                 val state by viewModel.state.collectAsStateWithLifecycle()
                 val presentation by presentationViewModel.presentation.collectAsStateWithLifecycle()
                 val speech by presentationViewModel.speech.collectAsStateWithLifecycle()

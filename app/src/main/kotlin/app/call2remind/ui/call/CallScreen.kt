@@ -33,6 +33,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -126,6 +127,27 @@ fun CallScreen(
     actions: CallActions,
     modifier: Modifier = Modifier,
     now: () -> Instant = Instant::now,
+) {
+    if (state.loading) {
+        // Just the panel until the call is known: no empty title, no plug for a call not yet loaded.
+        BackHandler { actions.onBack() }
+        Box(modifier.fillMaxSize().background(C2RTheme.colors.panel))
+        return
+    }
+    // A different call (onNewIntent) starts fresh: no answered / sheet state carried over.
+    key(state.occurrenceId) {
+        CallContent(state, presentation, speech, actions, modifier, now)
+    }
+}
+
+@Composable
+private fun CallContent(
+    state: CallUiState,
+    presentation: CallPresentation,
+    speech: SpeechProgress,
+    actions: CallActions,
+    modifier: Modifier,
+    now: () -> Instant,
 ) {
     val c = C2RTheme.colors
     val motion = C2RTheme.motion

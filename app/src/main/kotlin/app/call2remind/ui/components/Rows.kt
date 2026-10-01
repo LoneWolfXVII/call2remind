@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +31,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -38,6 +39,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.call2remind.ui.theme.C2RTheme
 import app.call2remind.ui.theme.Haptic
@@ -181,6 +183,7 @@ fun SegmentedControl(
         if (selectedIndex >= 0) position.animateTo(selectedIndex.toFloat(), motion.playful(0.001f))
     }
     val ink = c.ink
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Row(
         modifier
             .fillMaxWidth()
@@ -192,7 +195,9 @@ fun SegmentedControl(
                 val w = size.width / options.size
                 val travel = kotlin.math.abs(position.value - position.targetValue).coerceAtMost(1f)
                 val stretch = w * 0.18f * travel
-                val left = w * position.value - stretch / 2f
+                val fromStart = w * position.value - stretch / 2f
+                // Segments run right-to-left in RTL; the pill follows.
+                val left = if (rtl) size.width - fromStart - (w + stretch) else fromStart
                 drawRoundRect(
                     color = ink,
                     topLeft = Offset(left.coerceAtLeast(0f), 0f),
@@ -206,7 +211,7 @@ fun SegmentedControl(
             Box(
                 Modifier
                     .weight(1f)
-                    .height(40.dp)
+                    .heightIn(min = 48.dp)
                     .selectable(
                         selected = selected,
                         interactionSource = null,
