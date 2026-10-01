@@ -4,6 +4,10 @@ import android.app.Application
 import android.content.Intent
 import android.os.UserManager
 import androidx.test.core.app.ApplicationProvider
+import androidx.work.Configuration
+import androidx.work.WorkManager
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
 import app.call2remind.core.log.RingLogType
 import app.call2remind.core.model.Occurrence
 import app.call2remind.core.model.OccurrenceState
@@ -15,6 +19,7 @@ import app.call2remind.ringing.RingingService
 import app.call2remind.scheduling.AndroidAlarmScheduler
 import app.call2remind.scheduling.SchedulingEngine
 import app.call2remind.settings.SettingsRepository
+import app.call2remind.sync.SyncWorkers
 import app.call2remind.testing.FakeAlarmScheduler
 import app.call2remind.testing.FakeBackgroundJobs
 import app.call2remind.testing.FakeRingContextProvider
@@ -281,6 +286,22 @@ class ReceiversTest {
         TimeChangeReceiver().onReceive(app, Intent(Intent.ACTION_TIME_CHANGED))
 
         awaitUntil { alarms.armed[occ.id]?.at == clock.now }
+    }
+
+    @Test
+    fun timeZoneChangeReplansAndResyncsSources() {
+        WorkManagerTestInitHelper.initializeTestWorkManager(app, Configuration.Builder().setExecutor(SynchronousExecutor()).build())
+        val occ = scheduled("a", clock.now.plus(hours(1)))
+        clock.advance(hours(1).plus(minutes(10)))
+        alarms.reset()
+
+        TimeChangeReceiver().onReceive(app, Intent(Intent.ACTION_TIMEZONE_CHANGED))
+
+        awaitUntil { alarms.armed[occ.id]?.at == clock.now }
+        // Date-only items were mapped in the old zone: a forced re-sync re-maps them.
+        val workManager = WorkManager.getInstance(app)
+        awaitUntil { workManager.getWorkInfosForUniqueWork(SyncWorkers.NOW_LOCAL).get().isNotEmpty() }
+        assertThat(workManager.getWorkInfosForUniqueWork(SyncWorkers.NOW_CLOUD).get()).isNotEmpty()
     }
 
     @Test

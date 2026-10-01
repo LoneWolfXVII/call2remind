@@ -138,7 +138,7 @@ object Device {
     }
 
     fun alarmDumpForApp(): String =
-        shell("dumpsys alarm").lines().filter { it.contains(PKG) }.take(40).joinToString("\n")
+        shell("dumpsys alarm").lines().filter { it.contains("Alarm{") && it.contains(PKG) }.take(12).joinToString("\n")
 
     // --- Do Not Disturb --------------------------------------------------------------------
 

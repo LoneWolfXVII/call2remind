@@ -4,12 +4,12 @@ import android.app.Notification
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
-import app.call2remind.R
 import app.call2remind.core.log.RingLogEvent
 import app.call2remind.core.log.RingLogType
 import app.call2remind.core.model.OccurrenceState
 import app.call2remind.e2e.support.A11y
 import app.call2remind.e2e.support.AppDriver
+import app.call2remind.e2e.support.CallScreenDriver as Ui
 import app.call2remind.e2e.support.Calls
 import app.call2remind.e2e.support.Device
 import app.call2remind.e2e.support.E2eRule
@@ -69,7 +69,10 @@ class RingE2eTest {
         Device.sleepScreen()
         Calls.awaitFullScreenRing(call)
 
-        A11y.clickDescription(ANSWER)
+        // Answer through accessibility (TalkBack's double-tap); fall back to the plug drag so the
+        // rest of the flow is still exercised, and fail at the end if accessibility was refused.
+        val accessibleAnswer = A11y.tryClickDescription(Ui.answerLabel)
+        if (!accessibleAnswer) Ui.answerByDrag()
         val answered = Waits.value("answered", 15_000) {
             AppDriver.occurrence(call.occurrenceId)?.takeIf { it.answeredAt != null }
         }
@@ -83,11 +86,15 @@ class RingE2eTest {
         }
         assertThat(Device.isRingingServiceForeground()).isTrue()
 
-        A11y.clickText(DONE)
+        val accessibleDone = runCatching { A11y.clickText(Ui.doneLabel) }.isSuccess
+        if (!accessibleDone) Ui.tap(Ui.doneLabel)
         AppDriver.awaitState(call.occurrenceId, OccurrenceState.DONE)
         Calls.awaitRingEnded()
         assertThat(AppDriver.logTypes(call.occurrenceId)).containsExactly(RingLogType.FIRED, RingLogType.ANSWERED, RingLogType.DONE).inOrder()
         assertThat(AppDriver.ringNotification(call.occurrenceId)).isNull()
+
+        assertWithMessage("A11Y: the accessible Answer action works (TalkBack users can answer)").that(accessibleAnswer).isTrue()
+        assertWithMessage("A11Y: Done is clickable through accessibility").that(accessibleDone).isTrue()
     }
 
     @Test
@@ -97,7 +104,7 @@ class RingE2eTest {
         Calls.awaitFullScreenRing(call)
 
         val declinedAt = Instant.now()
-        A11y.customAction(ANSWER, DECLINE)
+        Ui.tap(Ui.snoozeLabel(5))
         val snoozed = AppDriver.awaitState(call.occurrenceId, OccurrenceState.SNOOZED)
         Calls.awaitRingEnded()
 
@@ -113,12 +120,15 @@ class RingE2eTest {
 
     @Test
     fun ringBackCapMarksMissed() {
-        AppDriver.updateSettings { it.copy(snoozeLength = Duration.ofSeconds(25), maxRingBacks = 1) }
+        val snoozeLength = Duration.ofSeconds(25)
+        AppDriver.updateSettings { it.copy(snoozeLength = snoozeLength, maxRingBacks = 1) }
         val call = AppDriver.scheduleCall("ring-back cap")
         Device.sleepScreen()
         Calls.awaitFullScreenRing(call)
 
-        A11y.customAction(ANSWER, DECLINE)
+        // Decline through the answer control's accessibility action (touch fallback: the pill).
+        val accessibleDecline = A11y.tryCustomAction(Ui.answerLabel, Ui.declineLabel)
+        if (!accessibleDecline) Ui.tap(Ui.snoozeLabel(snoozeLength.toMinutes()))
         val snoozed = AppDriver.awaitState(call.occurrenceId, OccurrenceState.SNOOZED)
         assertThat(snoozed.ringBacks).isEqualTo(1)
         Calls.awaitRingEnded()
@@ -126,9 +136,9 @@ class RingE2eTest {
         // The ring-back rings again on its own alarm.
         Device.sleepScreen()
         Calls.awaitFullScreenRing(call, fireAt = snoozed.fireAt)
-        assertWithMessage("last ring-back offers no snooze").that(Waits.within(10_000) { A11y.isShown(NO_RING_BACKS_LEFT) }).isTrue()
+        assertWithMessage("last ring-back offers no snooze").that(Waits.within(10_000) { A11y.isShown(Ui.noRingBacksLeft) }).isTrue()
 
-        A11y.customAction(ANSWER, DECLINE)
+        Ui.tap(Ui.declineLabel)
         val missed = AppDriver.awaitState(call.occurrenceId, OccurrenceState.MISSED)
         Calls.awaitRingEnded()
         val log = AppDriver.ringLog(call.occurrenceId)
@@ -139,12 +149,6 @@ class RingE2eTest {
         assertWithMessage("missed-reminder notification").that(
             Waits.within(10_000) { AppDriver.missedNotification(missed) != null },
         ).isTrue()
-    }
-
-    private companion object {
-        val ANSWER: String get() = Device.context.getString(R.string.action_answer)
-        val DECLINE: String get() = Device.context.getString(R.string.action_decline)
-        val DONE: String get() = Device.context.getString(R.string.action_done)
-        val NO_RING_BACKS_LEFT: String get() = Device.context.getString(R.string.call_decline_to_missed)
+        assertWithMessage("A11Y: the answer control's Decline custom action works").that(accessibleDecline).isTrue()
     }
 }

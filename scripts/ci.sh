@@ -70,6 +70,18 @@ PY
     set -- $(echo "$verdict" | sed -n 2p)
     echo "$verdict" | sed -n '3,$p' | grep -v '^$' || true
     if [[ "$1" == "done" ]]; then
+      # Per-job notices (the emulator jobs report every test's outcome this way).
+      for jid in $(echo "$jobs" | python3 -c 'import json,sys; [print(j["id"]) for j in json.load(sys.stdin).get("jobs",[])]'); do
+        curl -sS "${AUTH[@]}" "$API/check-runs/$jid/annotations" | python3 -c '
+import json, sys
+try:
+    items = json.load(sys.stdin)
+except Exception:
+    items = []
+for a in items if isinstance(items, list) else []:
+    if a.get("annotation_level") == "notice" and (a.get("title") or "").startswith("E2E"):
+        print("== " + a["title"]); print(a.get("message", ""))'
+      done
       if [[ "$2" == "ok" ]]; then echo "PASS (run $run_id)"; exit 0; fi
       echo "FAIL (run $run_id)"
       sleep 5

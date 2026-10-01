@@ -13,6 +13,7 @@ import app.call2remind.scheduling.SchedulingEngine
 import app.call2remind.settings.SettingsRepository
 import app.call2remind.ringing.RingLauncher
 import app.call2remind.ringing.RingWakeLock
+import app.call2remind.sync.SyncScheduler
 import app.call2remind.work.BackgroundJobs
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
@@ -129,18 +130,29 @@ class BootReceiver : BroadcastReceiver() {
  * Wall clock or time zone changed: wall-clock schedules resolve to new instants, and rings the
  * jump made overdue are recovered. Exact-alarm access granted (API 31+): re-arm so alarms that
  * fell back to inexact become exact again.
+ *
+ * A time zone change also re-syncs the sources: synced date-only items (all-day events, task due
+ * dates, birthdays) are stored with the zone the device had at sync time, so without a re-sync
+ * they would keep ringing at the old zone's wall-clock time (e.g. 09:00 in Kolkata = 20:30 the
+ * evening before in Los Angeles) until the next periodic sync.
  */
 @AndroidEntryPoint
 class TimeChangeReceiver : BroadcastReceiver() {
     @Inject lateinit var engine: SchedulingEngine
+
+    @Inject lateinit var syncScheduler: SyncScheduler
 
     @Inject @ApplicationScope
     lateinit var scope: CoroutineScope
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED -> runAsync(scope) {
+            Intent.ACTION_TIME_CHANGED -> runAsync(scope) { engine.onTimeChanged() }
+            Intent.ACTION_TIMEZONE_CHANGED -> runAsync(scope) {
                 engine.onTimeChanged()
+                // WorkManager lives in credential-protected storage: only once unlocked (a sync
+                // also runs on the first app open after unlock).
+                if (UserManagerCompat.isUserUnlocked(context)) syncScheduler.requestSync()
             }
             ACTION_EXACT_ALARM_PERMISSION_CHANGED -> runAsync(scope) { engine.reconcile() }
         }

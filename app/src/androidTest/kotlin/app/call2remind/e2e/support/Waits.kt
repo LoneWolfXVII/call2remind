@@ -32,6 +32,16 @@ object Waits {
         }
     }
 
+    /** Like [value] but returns null instead of failing. */
+    fun <T : Any> valueOrNull(timeoutMs: Long, pollMs: Long = 250, block: () -> T?): T? {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (true) {
+            runCatching(block).getOrNull()?.let { return it }
+            if (SystemClock.uptimeMillis() >= deadline) return null
+            SystemClock.sleep(pollMs)
+        }
+    }
+
     /** Like [until] but returns false instead of failing. */
     fun within(timeoutMs: Long, pollMs: Long = 250, condition: () -> Boolean): Boolean {
         val deadline = SystemClock.uptimeMillis() + timeoutMs

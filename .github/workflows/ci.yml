@@ -202,64 +202,14 @@ jobs:
           echo "e2e: ${{ steps.e2e.outcome }}, retry: ${{ steps.e2e_retry.outcome }}"
           exit 1
 
+      - name: Report results
+        if: always()
+        run: python3 scripts/e2e-report.py "API ${{ matrix.api }}" notice
+
       - name: Summarize failure
         if: failure()
-        env:
-          JOB_TITLE: instrumented (API ${{ matrix.api }})
         run: |
-          python3 - <<'PY' > failure.md
-          import glob, os, re, xml.etree.ElementTree as ET
-          title = os.environ["JOB_TITLE"]
-          out = [f"## CI failure: {title}", ""]
-          def read(p):
-              return open(p, errors="replace").read().splitlines() if os.path.exists(p) else []
-          if not os.path.exists("emulator-booted.marker"):
-              out.append("**Emulator did not boot** (no test ran).")
-          build = read("build.log")
-          errs = [l for l in build if re.match(r"^(e: |> |FAILURE|\* What went wrong|Execution failed)", l)]
-          if errs:
-              out += ["### Build errors", "```"] + errs[:120] + ["```"]
-          summary = read("e2e-out/summary.txt")
-          if summary:
-              out += ["### E2E summary", "```"] + summary[:80] + ["```"]
-          results = {"passed": 0, "failed": 0, "skipped": 0}
-          fails, skips = [], []
-          for f in glob.glob("app/build/outputs/androidTest-results/connected/**/*.xml", recursive=True):
-              try:
-                  root = ET.parse(f).getroot()
-              except Exception:
-                  continue
-              for tc in root.iter("testcase"):
-                  name = f"{tc.get('classname','').split('.')[-1]}.{tc.get('name')}"
-                  bad = next((tc.find(t) for t in ("failure", "error") if tc.find(t) is not None), None)
-                  if bad is not None:
-                      results["failed"] += 1
-                      body = (bad.text or bad.get("message") or "").strip().splitlines()
-                      fails.append(f"- **{name}**\n  ```\n  " + "\n  ".join(body[:14]) + "\n  ```")
-                  elif tc.find("skipped") is not None:
-                      results["skipped"] += 1
-                      sk = tc.find("skipped")
-                      skips.append(f"- {name}: {(sk.get('message') or (sk.text or '')).strip()[:300]}")
-                  else:
-                      results["passed"] += 1
-          out.append(f"### Instrumentation tests: {results['passed']} passed, {results['failed']} failed, {results['skipped']} skipped")
-          out += fails[:40]
-          if skips:
-              out += ["", "Skipped:"] + skips[:20]
-          conn = read("e2e-out/connected.log")
-          conn_errs = [l for l in conn if re.search(r"(FAILED|Process crashed|INSTRUMENTATION_|Test run failed|What went wrong|Exception|> )", l)]
-          if conn_errs:
-              out += ["### connectedDebugAndroidTest log", "```"] + conn_errs[:60] + ["```"]
-          log = read("e2e-out/logcat.txt")
-          if log:
-              pat = re.compile(r"(C2R-E2E|AndroidRuntime|FATAL|TestRunner.*(failed|finished)|RingingService|RingLauncher|AlarmScheduler|Receivers|SchedulingEngine|RingNotifications|IncomingCall|app\.call2remind.*(Exception|denied|refused|not allowed)|ActivityTaskManager.*call2remind|NotificationService.*call2remind)")
-              picked = [l for l in log if pat.search(l)]
-              crash = [i for i, l in enumerate(log) if "FATAL EXCEPTION" in l]
-              for i in crash[:3]:
-                  picked += ["--- crash ---"] + log[i:i + 25]
-              out += ["### Logcat excerpt", "```"] + picked[-250:] + ["```"]
-          print("\n".join(out)[:60000])
-          PY
+          python3 scripts/e2e-report.py "instrumented (API ${{ matrix.api }})" failure > failure.md
           jq -Rs '{body: .}' failure.md > payload.json
           curl -sS -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
