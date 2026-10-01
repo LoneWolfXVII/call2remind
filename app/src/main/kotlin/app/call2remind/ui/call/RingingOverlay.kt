@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,8 +53,16 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
-/** The call ringing right now (unanswered), for the in-app banner. */
-data class RingingCall(val occurrenceId: String, val title: String, val source: SourceType)
+/**
+ * The call ringing right now (unanswered), for the in-app banner. [ringKey] identifies this ring
+ * (a snoozed call that rings back is a new ring).
+ */
+data class RingingCall(
+    val occurrenceId: String,
+    val title: String,
+    val source: SourceType,
+    val ringKey: String = occurrenceId,
+)
 
 /** Watches Room for a RINGING, unanswered occurrence while the app is open. */
 @HiltViewModel
@@ -65,7 +74,10 @@ class RingingOverlayViewModel @Inject constructor(
     val ringing: StateFlow<RingingCall?> = occurrences.observeUpcoming()
         .map { list ->
             list.firstOrNull { it.occurrence.state == OccurrenceState.RINGING && it.occurrence.answeredAt == null }
-                ?.let { RingingCall(it.occurrence.id, it.reminder?.title.orEmpty(), it.occurrence.sourceType) }
+                ?.let {
+                    val o = it.occurrence
+                    RingingCall(o.id, it.reminder?.title.orEmpty(), o.sourceType, ringKey = "${o.id}@${o.fireAt.toEpochMilli()}#${o.ringBacks}")
+                }
         }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(1_000), null)
@@ -89,9 +101,11 @@ fun RingingOverlay(viewModel: RingingOverlayViewModel, modifier: Modifier = Modi
     val call by viewModel.ringing.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val motion = C2RTheme.motion
+    // Hidden for one ring only: a ring-back (new fire time / ring count) shows the banner again.
     var hiddenFor by rememberSaveable { mutableStateOf<String?>(null) }
     val current = call
-    val visible = current != null && hiddenFor != current.occurrenceId
+    LaunchedEffect(current == null) { if (current == null) hiddenFor = null }
+    val visible = current != null && hiddenFor != current.ringKey
     // Keep the last call composed while the banner leaves.
     val shown = remember { mutableStateOf<RingingCall?>(null) }
     if (current != null) shown.value = current
@@ -103,7 +117,9 @@ fun RingingOverlay(viewModel: RingingOverlayViewModel, modifier: Modifier = Modi
     ) {
         val last = shown.value ?: return@AnimatedVisibility
         val scope = rememberCoroutineScope()
-        val drag = remember { Animatable(0f) }
+        val drag = remember(last.ringKey) { Animatable(0f) }
+        // One action per ring: Snooze then Answer (or a double tap) must not race each other.
+        var acted by remember(last.ringKey) { mutableStateOf(false) }
         val dismissPx = with(LocalDensity.current) { 56.dp.toPx() }
         Box(
             Modifier
@@ -121,7 +137,7 @@ fun RingingOverlay(viewModel: RingingOverlayViewModel, modifier: Modifier = Modi
                     orientation = Orientation.Vertical,
                     onDragStopped = { velocity ->
                         if (drag.value < -dismissPx || velocity < -1_500f) {
-                            hiddenFor = last.occurrenceId
+                            hiddenFor = last.ringKey
                         } else {
                             drag.animateTo(0f, motion.playful(), initialVelocity = velocity)
                         }
@@ -133,8 +149,18 @@ fun RingingOverlay(viewModel: RingingOverlayViewModel, modifier: Modifier = Modi
                 title = last.title,
                 source = last.source,
                 detail = null,
-                onAnswer = { context.startActivity(IncomingCallActivity.intent(context, last.occurrenceId, answer = true)) },
-                onSnooze = { viewModel.snooze(last.occurrenceId) },
+                onAnswer = {
+                    if (!acted) {
+                        acted = true
+                        context.startActivity(IncomingCallActivity.intent(context, last.occurrenceId, answer = true))
+                    }
+                },
+                onSnooze = {
+                    if (!acted) {
+                        acted = true
+                        viewModel.snooze(last.occurrenceId)
+                    }
+                },
             )
         }
     }
