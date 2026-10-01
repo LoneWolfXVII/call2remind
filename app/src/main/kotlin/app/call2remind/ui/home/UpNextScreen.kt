@@ -48,6 +48,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -166,7 +167,7 @@ fun UpNextScreen(
         modifier
             .fillMaxSize()
             .background(c.ground)
-            .pullToRefresh(isRefreshing = state.syncing, state = pull, onRefresh = actions.onSync),
+            .pullToRefresh(isRefreshing = state.refreshing, state = pull, onRefresh = actions.onSync),
     ) {
         Column(
             Modifier
@@ -216,7 +217,7 @@ fun UpNextScreen(
             }
         }
 
-        PullIndicator(pull, state.syncing, Modifier.align(Alignment.TopCenter))
+        PullIndicator(pull, state.refreshing, Modifier.align(Alignment.TopCenter))
 
         Column(
             Modifier
@@ -436,6 +437,8 @@ private fun CollapsingStrip(
                     placeable.placeRelative(0, (header.offsetPx / 2f).roundToInt())
                 }
             }
+            // The strip slides up under the top bar's edge rather than over the title.
+            .clipToBounds()
             .graphicsLayer {
                 val f = header.fraction
                 alpha = (1f - f * 1.25f).coerceIn(0f, 1f)

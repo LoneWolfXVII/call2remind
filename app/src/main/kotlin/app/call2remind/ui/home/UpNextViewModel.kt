@@ -35,8 +35,10 @@ data class PendingSwipe(val occurrenceId: String, val title: String, val kind: S
 data class UpNextUiState(
     val loading: Boolean = true,
     val model: UpNextModel = UpNextModel(),
-    /** A source is syncing (spins the sync button, shows the pull indicator). */
+    /** A source is syncing, for any reason (spins the sync button). */
     val syncing: Boolean = false,
+    /** A sync the user asked for (pull / button) is running: holds the pull indicator. */
+    val refreshing: Boolean = false,
     val pending: PendingSwipe? = null,
 )
 
@@ -79,13 +81,10 @@ class UpNextViewModel @Inject constructor(
         Timeline.build(upcoming, history, clock.instant(), clock.zone, hiddenIds)
     }
 
-    private val syncing = combine(
-        sync.statuses.map { list -> list.any { it.state == SyncState.Syncing } }.onStart { emit(false) },
-        manualSync,
-    ) { any, manual -> any || manual }
+    private val anySyncing = sync.statuses.map { list -> list.any { it.state == SyncState.Syncing } }.onStart { emit(false) }
 
-    val state: StateFlow<UpNextUiState> = combine(model, syncing, pending) { m, s, p ->
-        UpNextUiState(loading = false, model = m, syncing = s, pending = p)
+    val state: StateFlow<UpNextUiState> = combine(model, anySyncing, manualSync, pending) { m, any, manual, p ->
+        UpNextUiState(loading = false, model = m, syncing = any || manual, refreshing = manual, pending = p)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), UpNextUiState())
 
     /** The current instant (tests drive a fake clock). */
