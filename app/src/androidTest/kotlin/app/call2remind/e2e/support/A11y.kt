@@ -53,8 +53,16 @@ object A11y {
      * (the node and the whole tree are logged).
      */
     fun tryClickDescription(desc: String, timeoutMs: Long = 15_000): Boolean {
-        val node = Waits.value("node with description '$desc'", timeoutMs) { byDescription(desc) }
-        return perform("click on '$desc'", node, AccessibilityNodeInfo.ACTION_CLICK) { byDescription(desc) }
+        // Compose reports the unmerged tree: a merged control's content description can sit on a
+        // (fake) child while its actions are on the parent, which is what TalkBack focuses.
+        val find = { byDescription(desc)?.let { clickableSelfOrAncestor(it) } }
+        val node = Waits.valueOrNull(timeoutMs) { find() }
+        if (node == null) {
+            e2eLog("A11Y: no clickable node for description '$desc': ${byDescription(desc)?.let(::describe)}")
+            dumpTree()
+            return false
+        }
+        return perform("click on '$desc'", node, AccessibilityNodeInfo.ACTION_CLICK, find)
     }
 
     fun clickDescription(desc: String, timeoutMs: Long = 15_000) {
@@ -75,7 +83,7 @@ object A11y {
      * Returns false if the node never offered it or refused it (logged with the tree).
      */
     fun tryCustomAction(desc: String, label: String, timeoutMs: Long = 15_000): Boolean {
-        val find = { byDescription(desc)?.takeIf { n -> n.actionList.any { it.label?.toString() == label } } }
+        val find = { byDescription(desc)?.let { selfOrAncestor(it) { n -> n.actionList.any { a -> a.label?.toString() == label } } } }
         val node = Waits.valueOrNull(timeoutMs) { find() }
         if (node == null) {
             e2eLog("A11Y: no custom action '$label' on '$desc': ${byDescription(desc)?.let(::describe)}")
@@ -127,11 +135,16 @@ object A11y {
         }
     }
 
-    private fun clickableSelfOrAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+    private fun clickableSelfOrAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? =
+        selfOrAncestor(node) { it.actionList.any { a -> a.id == AccessibilityNodeInfo.ACTION_CLICK } }
+
+    private fun selfOrAncestor(node: AccessibilityNodeInfo, predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
         var current: AccessibilityNodeInfo? = node
-        while (current != null) {
-            if (current.isClickable || current.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }) return current
+        var depth = 0
+        while (current != null && depth < 4) {
+            if (predicate(current)) return current
             current = current.parent
+            depth++
         }
         return null
     }

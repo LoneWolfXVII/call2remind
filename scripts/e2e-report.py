@@ -54,6 +54,7 @@ def notice(title):
     msg += [f"FAIL {n}" for n, _ in failed]
     msg += [f"SKIP {n}: {reasons.get(n, '')}" for n in skipped]
     msg += [l for l in read("e2e-out/summary.txt") if l.startswith(("process death", "connected", "device"))]
+    msg += e2e_lines(r"(DND total silence|FIRED \d+ms|keyguard locked|A11Y: )")[:30]
     text = "%0A".join(m.replace("%", "%25").replace("\r", "").replace("\n", " ") for m in msg)
     print(f"::notice title=E2E {title}::{text}")
 
@@ -72,7 +73,7 @@ def failure(title):
     out.append(f"### Instrumentation tests: {len(passed)} passed, {len(failed)} failed, {len(skipped)} skipped")
     for name, body in failed[:40]:
         out.append(f"- **{name}**\n  ```\n  " + "\n  ".join(body[:14]) + "\n  ```")
-    notes = e2e_lines(r"(FAILED |SKIPPED |A11Y|PLATFORM|refused|still alive)")
+    notes = e2e_lines(r"(FAILED |SKIPPED |A11Y|PLATFORM|DND |vibrations|refused|still alive|keyguard locked|FIRED )")
     if notes:
         out += ["### Test notes (C2R-E2E)", "```"] + notes[:150] + ["```"]
     conn = read("e2e-out/connected.log")

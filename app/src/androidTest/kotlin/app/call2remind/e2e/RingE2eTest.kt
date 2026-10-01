@@ -115,7 +115,8 @@ class RingE2eTest {
         val log = AppDriver.ringLog(call.occurrenceId)
         assertThat(log.map { it.type }).containsExactly(RingLogType.FIRED, RingLogType.SNOOZED).inOrder()
         assertThat(log.last().reason).isEqualTo(RingLogEvent.REASON_DECLINED)
-        assertWithMessage("snoozed ring re-armed as the next alarm clock").that(AppDriver.nextAlarmClockAt()).isEqualTo(snoozed.fireAt)
+        assertWithMessage("snoozed ring re-armed as the next alarm clock (ms)")
+            .that(AppDriver.nextAlarmClockAt()?.toEpochMilli()).isEqualTo(snoozed.fireAt.toEpochMilli())
     }
 
     @Test
