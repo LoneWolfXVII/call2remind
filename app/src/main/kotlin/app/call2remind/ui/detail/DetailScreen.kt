@@ -281,9 +281,10 @@ private fun NextRingPanel(state: DetailUiState, sharedKey: String, now: Instant,
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 LampDot(lit = occurrence != null && reminder.enabled, halo = true, pulse = ringing, unlitColor = c.onPanelMuted)
+                val motion = C2RTheme.motion
                 AnimatedContent(
                     targetState = status,
-                    transitionSpec = { fadeIn(C2RTheme.motion.fade()) togetherWith fadeOut(C2RTheme.motion.fade()) },
+                    transitionSpec = { fadeIn(motion.fade()) togetherWith fadeOut(motion.fade()) },
                     label = "detailStatus",
                 ) { Text(it, style = C2RTheme.type.caption, color = c.onPanelMuted) }
             }
