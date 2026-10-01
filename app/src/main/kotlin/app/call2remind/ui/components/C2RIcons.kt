@@ -33,7 +33,7 @@ object C2RIcons {
     val Speaker: ImageVector by lazy {
         icon("Speaker", STROKE, "M4 9.5h3.5L12 5.5v13l-4.5-4H4z", "M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11")
     }
-    val Back: ImageVector by lazy { icon("Back", STROKE, "M19 12H5M11 6l-6 6 6 6") }
+    val Back: ImageVector by lazy { icon("Back", STROKE, "M19 12H5M11 6l-6 6 6 6", autoMirror = true) }
     val Plus: ImageVector by lazy { icon("Plus", STROKE, "M12 5v14M5 12h14") }
     val Minus: ImageVector by lazy { icon("Minus", STROKE, "M5 12h14") }
     val Close: ImageVector by lazy { icon("Close", STROKE, "M6 6l12 12M18 6 6 18") }
@@ -63,7 +63,7 @@ object C2RIcons {
     val Music: ImageVector by lazy {
         icon("Music", STROKE, "M9 18V6l10-2v12", circle(6.5f, 18f, 2.5f), circle(16.5f, 16f, 2.5f))
     }
-    val ChevronRight: ImageVector by lazy { icon("ChevronRight", STROKE, "M9.5 6l6 6-6 6") }
+    val ChevronRight: ImageVector by lazy { icon("ChevronRight", STROKE, "M9.5 6l6 6-6 6", autoMirror = true) }
     val FullScreen: ImageVector by lazy { icon("FullScreen", STROKE, "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5") }
     val Clock: ImageVector by lazy { icon("Clock", STROKE, circle(12f, 12f, 8.5f), "M12 7.5V12l3 2") }
     val Person: ImageVector by lazy { icon("Person", STROKE, circle(12f, 8.5f, 3.5f), "M5 20c.8-3.5 3.6-5.5 7-5.5s6.2 2 7 5.5") }
@@ -87,13 +87,15 @@ object C2RIcons {
     private const val STROKE = 1.8f
     private const val VIEWPORT = 24f
 
-    private fun icon(name: String, strokeWidth: Float, vararg paths: String): ImageVector {
+    /** [autoMirror]: directional glyphs (back, chevrons) flip in right-to-left layouts. */
+    private fun icon(name: String, strokeWidth: Float, vararg paths: String, autoMirror: Boolean = false): ImageVector {
         val builder = ImageVector.Builder(
             name = "C2R.$name",
             defaultWidth = 24.dp,
             defaultHeight = 24.dp,
             viewportWidth = VIEWPORT,
             viewportHeight = VIEWPORT,
+            autoMirror = autoMirror,
         )
         for (d in paths) {
             builder.addPath(

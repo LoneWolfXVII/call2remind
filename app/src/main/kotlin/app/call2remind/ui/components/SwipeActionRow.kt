@@ -33,10 +33,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.call2remind.ui.theme.C2RTheme
 import app.call2remind.ui.theme.Haptic
@@ -83,7 +83,8 @@ object SwipePhysics {
  * icon on the playful spring; releasing past it (or flinging) slides the row off on the precise
  * spring, confirms (haptic) and calls the action. Released short, it springs back home on the
  * default spring, carrying the release velocity, so a flick that doesn't make it wobbles back.
- * Both actions are also TalkBack custom actions.
+ * Both actions are also TalkBack custom actions: [content] receives them and puts them on its
+ * clickable node, so TalkBack offers them where focus actually lands.
  */
 @Composable
 fun SwipeActionRow(
@@ -94,7 +95,7 @@ fun SwipeActionRow(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     contentBackground: Color = C2RTheme.colors.ground,
-    content: @Composable () -> Unit,
+    content: @Composable (accessibilityActions: List<CustomAccessibilityAction>) -> Unit,
 ) {
     val motion = C2RTheme.motion
     val haptics = rememberHaptics()
@@ -114,6 +115,24 @@ fun SwipeActionRow(
     }
     val pop by animateFloatAsState(if (past) 1f else 0f, motion.playful(0.001f), label = "swipePop")
 
+    val accessibilityActions = remember(enabled, start.label, end.label) {
+        if (!enabled) {
+            emptyList()
+        } else {
+            listOf(
+                CustomAccessibilityAction(start.label) {
+                    currentStart()
+                    true
+                },
+                CustomAccessibilityAction(end.label) {
+                    currentEnd()
+                    true
+                },
+            )
+        }
+    }
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+
     val dragState = rememberDraggableState { delta ->
         scope.launch { offset.snapTo(offset.value + delta) }
     }
@@ -121,21 +140,7 @@ fun SwipeActionRow(
     Box(
         modifier
             .fillMaxWidth()
-            .onSizeChanged { widthPx = it.width.toFloat() }
-            .semantics {
-                if (enabled) {
-                    customActions = listOf(
-                        CustomAccessibilityAction(start.label) {
-                            currentStart()
-                            true
-                        },
-                        CustomAccessibilityAction(end.label) {
-                            currentEnd()
-                            true
-                        },
-                    )
-                }
-            },
+            .onSizeChanged { widthPx = it.width.toFloat() },
     ) {
         // The reveal behind the row: only the side being uncovered is painted. Recomposes only
         // when the drag changes direction; the per-frame work is in graphics layers.
@@ -157,7 +162,8 @@ fun SwipeActionRow(
                     scaleX = scale
                     scaleY = scale
                     alpha = (progress * 1.4f).coerceIn(0f, 1f)
-                    transformOrigin = TransformOrigin(if (fromStart) 0f else 1f, 0.5f)
+                    val atLeft = fromStart != rtl
+                    transformOrigin = TransformOrigin(if (atLeft) 0f else 1f, 0.5f)
                 },
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -175,6 +181,8 @@ fun SwipeActionRow(
                     state = dragState,
                     orientation = Orientation.Horizontal,
                     enabled = enabled,
+                    // offset {} is mirrored in RTL, so the drag must be too.
+                    reverseDirection = rtl,
                     onDragStopped = { velocity ->
                         when (SwipePhysics.release(offset.value, velocity, threshold, flingPx)) {
                             SwipePhysics.Outcome.START -> {
@@ -192,7 +200,7 @@ fun SwipeActionRow(
                     },
                 ),
         ) {
-            content()
+            content(accessibilityActions)
         }
     }
 }

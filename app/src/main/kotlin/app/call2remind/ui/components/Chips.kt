@@ -1,5 +1,7 @@
 package app.call2remind.ui.components
 
+import android.os.Build
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -37,6 +39,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -46,11 +49,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import app.call2remind.ui.theme.C2RTheme
 import app.call2remind.ui.theme.Haptic
 import app.call2remind.ui.theme.rememberHaptics
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * A round day-of-week toggle (44 dp). Turning on, the ink fill blooms from the centre on the
@@ -168,7 +171,7 @@ fun UndoBar(
     onUndo: () -> Unit,
     onTimeout: () -> Unit,
     modifier: Modifier = Modifier,
-    durationMs: Int = UNDO_WINDOW_MS,
+    durationMs: Int = rememberUndoWindowMs(),
 ) {
     val c = C2RTheme.colors
     val motion = C2RTheme.motion
@@ -219,5 +222,25 @@ fun UndoBar(
     }
 }
 
-/** How long the undo bar waits before committing. */
+/** How long the undo bar waits before committing (before accessibility timeout preferences). */
 const val UNDO_WINDOW_MS: Int = 4_000
+
+/**
+ * [base] stretched to the user's accessibility timeout preference ("Time to take action"), since
+ * the bar holds a control and text that must be read before it disappears.
+ */
+@Composable
+fun rememberUndoWindowMs(base: Int = UNDO_WINDOW_MS): Int {
+    val context = LocalContext.current
+    return remember(context, base) {
+        val manager = context.getSystemService(AccessibilityManager::class.java)
+        if (manager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            manager.getRecommendedTimeoutMillis(
+                base,
+                AccessibilityManager.FLAG_CONTENT_CONTROLS or AccessibilityManager.FLAG_CONTENT_TEXT,
+            )
+        } else {
+            base
+        }
+    }
+}

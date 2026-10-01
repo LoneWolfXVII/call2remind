@@ -6,6 +6,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -131,6 +132,21 @@ class UpNextScreenTest {
         rule.runOnIdle { node.config[SemanticsActions.CustomActions].first { it.label == done }.action() }
 
         assertThat(swipes).containsExactly("Gym" to SwipeKind.DONE)
+    }
+
+    @Test
+    fun swipeActionsSitOnTheRowsClickableNode() {
+        show(UpNextUiState(loading = false, model = model))
+        val done = context.getString(R.string.swipe_done)
+        val skip = context.getString(R.string.swipe_skip)
+        val inGym = hasAnyAncestor(hasTestTag(UpNextTags.row(gym.occurrence.id)))
+        val focusable = rule.onAllNodes(hasClickAction() and inGym, useUnmergedTree = true).fetchSemanticsNodes().first()
+
+        val labels = focusable.config[SemanticsActions.CustomActions].map { it.label }
+        assertThat(labels).containsExactly(done, skip)
+        rule.runOnIdle { focusable.config[SemanticsActions.CustomActions].first { it.label == skip }.action() }
+
+        assertThat(swipes).containsExactly("Gym" to SwipeKind.SKIP)
     }
 
     @Test

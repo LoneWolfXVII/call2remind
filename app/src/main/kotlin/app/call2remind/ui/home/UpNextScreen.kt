@@ -25,7 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -57,16 +58,22 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -526,12 +533,12 @@ private fun TimelineRowItem(
     val c = C2RTheme.colors
     val done = SwipeAction(stringResource(R.string.swipe_done), C2RIcons.Check, c.lamp, c.onLamp)
     val skip = SwipeAction(stringResource(R.string.swipe_skip), C2RIcons.Close, c.tint, c.ink)
-    val content: @Composable () -> Unit = {
-        RowBody(row, showDate, connector, zone, now) { actions.onOpen(row, UpNextShared.row(row.occurrenceId)) }
+    val content: @Composable (List<CustomAccessibilityAction>) -> Unit = { a11yActions ->
+        RowBody(row, showDate, connector, zone, now, a11yActions) { actions.onOpen(row, UpNextShared.row(row.occurrenceId)) }
     }
     Box(modifier.testTag(UpNextTags.row(row.occurrenceId))) {
         if (row.isFinished) {
-            content()
+            content(emptyList())
         } else {
             SwipeActionRow(
                 start = done,
@@ -551,10 +558,15 @@ private fun RowBody(
     connector: Boolean,
     zone: ZoneId,
     now: Instant,
+    accessibilityActions: List<CustomAccessibilityAction>,
     onClick: () -> Unit,
 ) {
     val c = C2RTheme.colors
     val key = UpNextShared.row(row.occurrenceId)
+    val density = LocalDensity.current
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    // The rail runs under the dot, so it follows the (growable) time column's measured width.
+    var railX by remember { mutableFloatStateOf(with(density) { (12 + 70 + 14 + 10).dp.toPx() }) }
     val line = c.line
     val past = row.isFinished || row.fireAt.isBefore(now)
     val time = timeParts(row.fireAt)
@@ -565,23 +577,31 @@ private fun RowBody(
             .heightIn(min = 48.dp)
             .pressTint(interaction)
             .clickable(interactionSource = interaction, indication = null, enabled = !row.isFinished, onClickLabel = row.title, onClick = onClick)
+            // Swipe actions live on the node TalkBack focuses (the clickable row), not a wrapper.
+            .semantics { if (accessibilityActions.isNotEmpty()) customActions = accessibilityActions }
             .drawBehind {
                 if (connector) {
                     // Rail to the next row's dot: from under this dot into the next row's padding.
-                    val x = (12 + 70 + 14 + 10).dp.toPx()
+                    val x = if (rtl) size.width - railX else railX
                     drawLine(line, Offset(x, 10.dp.toPx() + 24.dp.toPx()), Offset(x, size.height + 12.dp.toPx()), strokeWidth = 2.dp.toPx())
                 }
             }
             .padding(start = 12.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Column(Modifier.width(70.dp), horizontalAlignment = Alignment.End) {
+        Column(
+            Modifier
+                .widthIn(min = 70.dp)
+                .onSizeChanged { railX = with(density) { 12.dp.toPx() + it.width + (14 + 10).dp.toPx() } },
+            horizontalAlignment = Alignment.End,
+        ) {
             Text(
                 time.text,
                 style = C2RTheme.type.monoSmall.copy(fontWeight = FontWeight.SemiBold),
                 color = if (past) c.muted else c.ink,
                 textAlign = TextAlign.End,
                 maxLines = 1,
+                softWrap = false,
                 modifier = Modifier
                     .padding(top = 2.dp)
                     .sharedTextIfAvailable(SharedKeys.time(key)),

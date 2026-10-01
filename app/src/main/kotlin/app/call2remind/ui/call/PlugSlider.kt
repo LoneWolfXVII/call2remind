@@ -39,6 +39,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
@@ -48,6 +49,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.call2remind.ui.components.C2RIcons
 import app.call2remind.ui.components.LampPulse
@@ -140,6 +142,7 @@ fun PlugSlider(
     val motion = C2RTheme.motion
     val haptics = rememberHaptics()
     val density = LocalDensity.current
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val scope = rememberCoroutineScope()
     val currentOnAnswer by rememberUpdatedState(onAnswer)
 
@@ -204,9 +207,12 @@ fun PlugSlider(
                 val stroke = 1.5.dp.toPx()
                 val plugRight = inset.toPx() + plugSize.toPx() + offset.floatValue
                 if (p > 0f) {
+                    val washWidth = plugRight.coerceAtMost(size.width)
                     drawRoundRect(
                         color = c.lamp.copy(alpha = 0.16f * p + 0.04f),
-                        size = Size(plugRight.coerceAtMost(size.width), size.height),
+                        // In RTL the plug starts at the right edge, so the wash grows leftwards.
+                        topLeft = Offset(if (rtl) size.width - washWidth else 0f, 0f),
+                        size = Size(washWidth, size.height),
                         cornerRadius = r,
                     )
                 }
@@ -266,6 +272,8 @@ fun PlugSlider(
                     orientation = Orientation.Horizontal,
                     enabled = enabled && !committed,
                     startDragImmediately = true,
+                    // offset {} is mirrored in RTL (the socket is on the left), so the drag must be too.
+                    reverseDirection = rtl,
                     onDragStarted = {
                         settleJob?.cancel()
                     },
