@@ -301,7 +301,8 @@ class ReceiversTest {
         // Date-only items were mapped in the old zone: a forced re-sync re-maps them.
         val workManager = WorkManager.getInstance(app)
         awaitUntil { workManager.getWorkInfosForUniqueWork(SyncWorkers.NOW_LOCAL).get().isNotEmpty() }
-        assertThat(workManager.getWorkInfosForUniqueWork(SyncWorkers.NOW_CLOUD).get()).isNotEmpty()
+        // Enqueued right after the local one, on the receiver's thread: wait for it too.
+        awaitUntil { workManager.getWorkInfosForUniqueWork(SyncWorkers.NOW_CLOUD).get().isNotEmpty() }
     }
 
     @Test
