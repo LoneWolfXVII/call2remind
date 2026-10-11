@@ -25,6 +25,17 @@ android {
         buildConfigField("String", "MS_CLIENT_ID", "\"REPLACE_ME\"")
     }
 
+    // A committed debug key (standard android/androiddebugkey credentials, debug only) so every
+    // CI-built debug APK is signed the same way and installs over the previous one.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
