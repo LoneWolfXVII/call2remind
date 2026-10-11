@@ -20,6 +20,15 @@ interface TokenProvider {
     suspend fun disconnect()
 }
 
+/**
+ * Whether cloud sign-in (Google Tasks, Microsoft To Do) ships in this build. While false the token
+ * providers below are placeholders and the Sources screen labels those rows "Coming soon" instead
+ * of "Not connected". Flip it when the real OAuth flows and client IDs land.
+ */
+object CloudSignIn {
+    const val AVAILABLE: Boolean = false
+}
+
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class GoogleTasksAuth

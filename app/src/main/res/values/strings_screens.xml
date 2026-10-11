@@ -166,6 +166,7 @@
     <string name="source_state_needs_contacts">Needs contacts access</string>
     <string name="source_state_needs_notifications">Needs notification access</string>
     <string name="source_state_not_connected">Not connected</string>
+    <string name="source_state_coming_soon">Coming soon</string>
 
     <!-- Habit editor -->
     <string name="habit_new_title">New habit</string>

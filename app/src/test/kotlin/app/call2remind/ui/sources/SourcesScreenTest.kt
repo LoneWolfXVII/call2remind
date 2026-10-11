@@ -1,10 +1,12 @@
 package app.call2remind.ui.sources
 
 import android.content.Context
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -96,6 +98,14 @@ class SourcesScreenTest {
         rule.onNodeWithTag(SourcesTags.action(SourceType.BIRTHDAY)).performClick()
 
         assertThat(fixes).containsExactly(SourceType.BIRTHDAY)
+    }
+
+    @Test
+    fun cloudSourcesAreLabelledComingSoon() {
+        show()
+
+        rule.onAllNodesWithText(context.getString(R.string.source_state_coming_soon)).assertCountEquals(2)
+        rule.onAllNodesWithText(context.getString(R.string.source_state_not_connected)).assertCountEquals(0)
     }
 
     @Test

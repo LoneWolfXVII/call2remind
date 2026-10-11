@@ -51,6 +51,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.call2remind.R
 import app.call2remind.core.model.SourceType
+import app.call2remind.sources.auth.CloudSignIn
 import app.call2remind.sources.habit.Habit
 import app.call2remind.sync.SyncCoordinator
 import app.call2remind.sync.SyncState
@@ -358,7 +359,8 @@ private fun statusText(type: SourceType, status: SyncStatus?, now: Instant): Str
                 else -> R.string.source_state_needs_notifications
             },
         )
-        SyncState.NotConnected -> stringResource(R.string.source_state_not_connected)
+        SyncState.NotConnected ->
+            stringResource(if (CloudSignIn.AVAILABLE) R.string.source_state_not_connected else R.string.source_state_coming_soon)
         SyncState.Idle, null -> {
             val at = status?.lastSyncAt
             when {
